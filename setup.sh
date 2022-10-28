@@ -67,6 +67,7 @@ apt-get install --yes pkg-config python-tk
 
 
 # install pip packages
+pip install gitdb2==2.0.6
 pip install angr==7.8.9.26
 pip install claripy==7.8.9.26
 pip install matplotlib
