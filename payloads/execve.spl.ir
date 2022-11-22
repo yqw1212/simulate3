@@ -1,0 +1,7 @@
+@__0 entry 
+@__2 varset prog num 2f62696e2f736800 
+@__4 varset argv var prog num 0000000000000000 
+@__6 regset 0 var prog
+@__8 regset 1 var argv
+@__10 regset 2 num 0
+@__12 call execve 0 1 2

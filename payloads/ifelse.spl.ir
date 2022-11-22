@@ -1,0 +1,7 @@
+@__0 entry 
+@__2 regset 0 num 0
+@__4 cond 0 != 0 @__12
+@__6 regset 1 num 1
+@__8 jump @__16
+@__12 regset 1 num 0
+@__16 regset 0 num 0

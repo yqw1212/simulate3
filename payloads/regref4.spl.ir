@@ -1,0 +1,9 @@
+@__0 entry 
+@__2 varset var_a num 0001000000000000 
+@__4 varset var_b num 7468697320697320 num 612072616e646f6d num 20737472696e67 
+@__6 varset var_c num 0100000000000000 num 0200000000000000 num 0300000000000000 var var_a num 0400000000000000 var var_b 
+@__8 varset var_d var var_c 
+@__10 regset 0 var var_a
+@__12 regset 1 var var_b
+@__14 regset 2 var var_c
+@__16 regset 3 var var_d

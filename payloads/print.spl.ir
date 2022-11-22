@@ -1,0 +1,6 @@
+@__0 entry 
+@__2 varset msg num 5468697320697320 num 6d792072616e646f num 6d206d6573736167 num 6521203a2900 
+@__4 regset 0 num 0
+@__6 regset 1 var msg
+@__8 regset 2 num 1
+@__10 call write 0 1 2
