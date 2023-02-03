@@ -1,5 +1,0 @@
-pydot
-networkx
-angr
-claripy
-bingraphvis
