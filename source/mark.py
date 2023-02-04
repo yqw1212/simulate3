@@ -360,12 +360,6 @@ class mark( object ):
                 # apply abstraction to the basic block that starts at "addr"
                 abstr = A.abstract_ng(self.__proj, addr)
 
-                # print 'ADDR', hex(addr)
-                # for a,b in abstr:
-                #     print '\t', a, b
-                # 
-                # exit()
-
 
                 # Abstraction is a process that needs to be done only once. 
                 # Cache all abstractions, to avoid recalculating them later on.
@@ -390,49 +384,6 @@ class mark( object ):
                 dbg_prnt(DBG_LVL_2, "%d%% completed" % completed)
 
         dbg_prnt(DBG_LVL_1, "Done.")
-
-
-
-    # --------------------------------------------------------------------------------------------- 
-    # save_abstractions(): Doing a symbolic execution on every basic block in the CFG is a very
-    #       time consuming operation. The abstraction process is independent of the SPL program,
-    #       saving the abstractions can save a lot of time when testing multiple SPL programs on
-    #       the same binary. This function dumps all abstractions into a file
-    #
-    # :Arg filename: Name of the file
-    # :Ret: If saving was successful, function returns True. Otherwise an error message is 
-    #       displayed and function returns False.
-    #
-    def save_abstractions( self, filename ):
-        dbg_prnt(DBG_LVL_1, "Saving basic block abstractions to a file...")
-
-        abstr = { }                                 # place abstractions here
-        fail  = set()                               # and failures here
-
-
-        # collect all abstractions
-        for node, attr in nx.get_node_attributes(self.__cfg.graph,'abstr').iteritems(): 
-            abstr[node.addr] = attr
-
-        # collect all failures
-        for node, _ in nx.get_node_attributes(self.__cfg.graph,'fail').iteritems(): 
-            fail.add(node.addr)
-
-        try:
-            output = open(filename + '.abs', 'wb')  # create the file
-            pickle.dump(abstr, output, 0)           # pickle dictionary using protocol 0.
-            pickle.dump(fail,  output, 0)
-            output.close()
-
-        except IOError, err:                        # error is not fatal, so don't abort program
-            warn("Cannot save abstractions: %s" % str(err))
-            return False
-
-    
-        dbg_prnt(DBG_LVL_1, "Done.")
-
-        return True                                 # success!
-
 
         
     # --------------------------------------------------------------------------------------------- 
@@ -565,15 +516,12 @@ class mark( object ):
                 if stmt['type'] == 'regset' and not isinstance(stmt['val'], tuple):
                     
                     for reg, data in abstr['regwr'].iteritems():
-                     #   print '{',  reg, data
 
                         # apply register filter
                         if not self.__reg_filter(reg): continue
 
 
                         if data['type'] == 'concrete' and stmt['val'] == data['const']:
-                            dbg_prnt(DBG_LVL_3, "Statement match! (__r%d) %%%s = 0x%x" % 
-                                                (stmt['reg'], reg, data['const']) )
 
                             if 'immutable' not in self.__rg.node['__r%d' % stmt['reg']]:
                                 self.__rg.add_edge('__r%d' % stmt['reg'], reg)
@@ -585,8 +533,6 @@ class mark( object ):
                         # if there's no concrete value, check for dereferences
                         elif data['type'] == 'deref' and self.__imm_addr(data['addr'], abstr):
 
-                            dbg_prnt(DBG_LVL_3, "Statement match! (__r%d) %%%s = [%s]" % 
-                                                (stmt['reg'], reg, data['addr']) )
 
                             if 'immutable' not in self.__rg.node['__r%d' % stmt['reg']]:
                                 self.__rg.add_edge('__r%d' % stmt['reg'], reg)
@@ -632,28 +578,6 @@ class mark( object ):
                         if data['type'] == 'concrete' and data['writable'] == True:
 
 
-                            dbg_prnt(DBG_LVL_3, "Statement match! (__r%d) %%%s = 0x%x (%s)" % 
-                                                (stmt['reg'], reg, data['const'], stmt['val'][0]))
-
-                            '''
-                            dbg_prnt(DBG_LVL_0, "Statement match! (__r%d) %%%s = 0x%x (%s)" % 
-                                                (stmt['reg'], reg, data['const'], stmt['val'][0]))
-                            print '\t', 'ADDR', hex(addr)                            
-                            print '\t', data
-                            print '\t', abstr['conwr']
-                            print '\t', abstr['memwr']
-                            print '\n\n'
-
-                            # apply abstraction to the basic block that starts at "addr"
-                            abstr = A.abstract_ng(self.__proj, 0x403fa2)
-
-                            print '^^^^^^^^^^^^^^^^^^^^^^'
-                            abstr = A.abstract_ng(self.__proj, 0x40400A)
-                            
-                            exit()
-
-                            '''
-
                             # Abstraction is a process that needs to be done only once. 
                             if not self.__rg.has_edge('__r%d' % stmt['reg'], reg):
                                 var = set()
@@ -683,9 +607,7 @@ class mark( object ):
                         # if there's no concrete value, check for dereferences
                         elif data['type'] == 'deref' and self.__imm_addr(data['addr'], abstr):
                             pass
-                            
-                            dbg_prnt(DBG_LVL_3, "Statement match! (__r%d) %%%s = [%s] (%s)" % 
-                                                (stmt['reg'], reg, data['addr'], stmt['val'][0]))
+
 
                             # ----------------------------------------------------------- 
                             # Apply an optimization to reduce the large number of derefs.
@@ -699,8 +621,6 @@ class mark( object ):
                             for word in blacklist:
                                 if word in data['addr'].shallow_repr():
                                     skip = True
-                                    dbg_prnt(DBG_LVL_3, "blacklisted address '%s'" % 
-                                                            data['addr'].shallow_repr())
                                     break
 
 
@@ -787,11 +707,6 @@ class mark( object ):
                         if data['type'] == 'mod' and data['op'] == stmt['op'] and \
                            data['const'] == stmt['val']:
 
-                                # match!
-                                dbg_prnt(DBG_LVL_3, "Statement match! (__r%d) %%%s %s= 0x%x" % 
-                                                (stmt['reg'], reg, data['op'], data['const']))
-                                               
-
                                 if 'immutable' not in self.__rg.node['__r%d' % stmt['reg']]:
                                     self.__rg.add_edge('__r%d' % stmt['reg'], reg)
 
@@ -816,8 +731,6 @@ class mark( object ):
                             loadreg = data['deps'][0]
 
                             # match!
-                            dbg_prnt(DBG_LVL_3, "Statement match! (__r%d) %%%s = *(__r%d) %%%s" % 
-                                            (stmt['reg'], reg, stmt['mem'], loadreg))
                                   
 
                             if 'immutable' not in self.__rg.node['__r%d' % stmt['reg']] and \
@@ -838,7 +751,6 @@ class mark( object ):
                 elif stmt['type'] == 'memwr':
                     
                     for memwr in abstr['splmemwr']:
-                        print 'MEMWR', memwr
                         # apply register filters
                         if not self.__reg_filter(memwr['mem']) or \
                            not self.__reg_filter(memwr['val']):
@@ -848,9 +760,6 @@ class mark( object ):
                         # TODO: memwr['size'] == MEMORY_LOADSTORE_SIZE
                     
                         # match!
-                        dbg_prnt(DBG_LVL_3, "Statement match! *(__r%d) %%%s = (__r%d) %%%s" % 
-                                        (stmt['mem'], memwr['mem'], stmt['val'], memwr['val']))
-                              
 
                         if 'immutable' not in self.__rg.node['__r%d' % stmt['mem']] and \
                            'immutable' not in self.__rg.node['__r%d' % stmt['val']]:
@@ -985,7 +894,6 @@ class mark( object ):
         
 
             if len(cand) > 0:                       # if block is good for at least 1 statement
-                dbg_arb(DBG_LVL_3, "Block 0x%x is candidate when:" % addr, cand )
 
                 # add "cand" attribute to that block (node)
                 self.__cfg.graph.add_node(self.__m[addr], cand=cand)
@@ -1056,14 +964,7 @@ class mark( object ):
         #       print i, [(hex(j), k) for j, k in j]
 
         self.map_graph = self.__rg
-        
-        # for edge in self.map_graph.edges(data=True):
-        #     print edge
 
-        # for node in self.map_graph.nodes(data=True):
-        #     print node
-
-        # print self.__rg.edges()
 
         # print variable mappings 
         for u, v, w in self.__rg.edges(data=True):
@@ -1221,8 +1122,6 @@ class mark( object ):
             
 
             if len(acc) > 0:
-                dbg_prnt(DBG_LVL_4, "Block 0x%x is accepted for statement(s): %s" %
-                                      (node.addr, ', '.join(sorted(map(str, acc))) ) )
                 
                 self.__cfg.graph.node[node]['acc'] = acc
                 
@@ -1232,8 +1131,6 @@ class mark( object ):
                 cnt |= set(acc)
 
 
-
-        # print 'accepted', accepted
 
 
         # -------------------------------------------------------------------------------
@@ -1319,30 +1216,9 @@ class mark( object ):
                             print hex(node.addr), 'clob for varset'
                             clob.add(stmt['uid'])
                             fatal('I should come back to that')
-                            '''
-                            'memwr': set([
-                                (<SAO <BV64 0x7fffffffffeffb0>>, <SAO <BV64 0x40f5a5>>), 
-                                (<SAO <BV64 0x7fffffffffeffd0>>, <SAO <BV64 r12_48109_64>>), 
-                                (<SAO <BV64 0x7fffffffffeffc0>>, <SAO <BV64 rbx_48100_64>>), 
-                                (<SAO <BV64 0x7fffffffffeffe8>>, <SAO <BV64 r15_48112_64>>), 
-                                (<SAO <BV64 0x7fffffffffeffc8>>, <SAO <BV64 0x7ffffffffff01f0>>), 
-                                (<SAO <BV64 0x7fffffffffeffd8>>, <SAO <BV64 r13_48110_64>>), 
-                                (<SAO <BV64 0x7fffffffffeffe0>>, <SAO <BV64 r14_48111_64>>)]), 
 
-                            'conwr': set([
-                                (576460752303357888L, 64), 
-                                (576460752303357896L, 64), 
-                                (576460752303357928L, 64), 
-                                (576460752303357904L, 64), 
-                                (576460752303357872L, 64), 
-                                (576460752303357912L, 64), 
-                                (576460752303357920L, 64)])}
-                            '''
                         # Check rsvp here? (and not during search?) Not sure :\
 
-                        #
-                        # TODO: use 'size' and check for overlaps (e.g, vmap is X, but addr is X+1)
-                        #
 
 
                 # -----------------------------------------------------------------------
@@ -1445,9 +1321,6 @@ class mark( object ):
             # solutions earlier.
             # ---------------------------------------------------------------------------
             if len(clob) > 0:
-                dbg_prnt(DBG_LVL_4, "Block 0x%x (%d/%d) is clobbering for statement(s): %s" %
-                                     (node.addr,  counter, nnodes, # pretty_list(clob, ', ', dec)))                
-                                                         ', '.join(sorted(map(str, clob)))) )
                 
                 self.__cfg.graph.node[node]['clob'] = clob
                 
@@ -1460,9 +1333,6 @@ class mark( object ):
 
         dbg_prnt(DBG_LVL_1, "Done.")
 
-        # print clobbering
-        # print self.rsvp
-        # exit()
 
         return clobbering
 
@@ -1494,15 +1364,7 @@ class mark( object ):
     # :Ret: If statement s2 is clobbering with statement s1 function returns True. Otherwise it
     #       returns False.
     #       
-    def __is_clobbering( self, s1, s2 ):   
-        # TODO: That's not totally correct for complex SPL payloads, but it works for now
-        #
-        #        if  (s1['type'] == 'regset' or s1['type'] == 'regmod') and \
-        #            (s2['type'] == 'regset' or s2['type'] == 'regmod'):
-        #                if s1['reg'] == s2['reg']:
-        #                    return True
-        #
-        # TODO: Add statements for memrd/memwr!!! IMPORTANT!!!
+    def __is_clobbering( self, s1, s2 ):
 
         s1_regs = set(self.__get_stmt_regs(s1))
         s2_regs = set(self.__get_stmt_regs(s2))

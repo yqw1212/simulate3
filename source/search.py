@@ -407,8 +407,7 @@ class search:
 
         
         # if case that you want to apply a specific mapping, discard all others
-        # TODO: Replace < with != (?)
-        if self.__options['mapping-id'] != -1 and self.__ctr < self.__options['mapping-id']: 
+        if self.__options['mapping-id'] != -1 and self.__ctr < self.__options['mapping-id']:
             # dbg_prnt(DBG_LVL_1, "Discard current mapping.")
             return 0
 
@@ -462,32 +461,6 @@ class search:
 
         # add entry point to accblks (with min uid) to avoid special cases
         accblks[ START_PC ] = [self.__entry]
-
-
-        # also add SPL's return address as an acceptd block
-        for stmt in self.__IR:                      # return is the last statement in IR
-            if stmt['type'] == 'return':
-
-                # check that target address is a valid address of a basic block 
-                if stmt['target'] != -1 and stmt['target'] not in ADDR2NODE:
-                    fatal("Return address '0x%x' not found" % stmt['target'])
-
-                accblks[ stmt['uid'] ] = [ stmt['target'] ]
-
-
-        # ---------------------------------------------------------------------
-        # Pretty-print the accepted and clobbering blocks
-        # --------------------------------------------------------------------- 
-        dbg_prnt(DBG_LVL_2, 'Accepted block set (uid/block):')
-
-        for a,b in sorted(accblks.iteritems()):
-            dbg_prnt(DBG_LVL_2, '\t%s: %s' % (bold(a, pad=3), ', '.join(['0x%x' % x for x in b])))
-
-
-        dbg_prnt(DBG_LVL_3, 'Clobbering block set (uid/block):')
-
-        for a,b in sorted(cloblks.iteritems()):
-            dbg_prnt(DBG_LVL_3, '\t%s: %s' % (bold(a, pad=3), ', '.join(['0x%x' % x for x in b])))
 
 
         # ---------------------------------------------------------------------
@@ -557,14 +530,13 @@ class search:
 
                 self.__simstash = []
 
-
                 entry = self.__entry            # use the regular entry point
 
 
                 try:
                     # create the simulation object
                     simulation = S.simulate(self.__proj, self.__cfg, cloblks, adj, self.__IR,
-                                            regmap, varmap, rsvp, entry)
+                                            varmap, rsvp, entry)
                 except Exception, e:
                     dbg_prnt(DBG_LVL_2, "Cannot create simulation object. Discard current Hk")
                     continue

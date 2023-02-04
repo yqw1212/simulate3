@@ -860,12 +860,6 @@ class _cfg_shortest_path( _cs_ksp_intrl ):
                         # We select P as return path (according to __depth_metric)
                         R = [(cost, P)]
 
-                        
-                        dbg_arb(DBG_LVL_4,  '\tF set:', [(f[0], pretty_list(f[1])) for f in F])
-                        dbg_arb(DBG_LVL_4,  '\tR set:', [(r[0], pretty_list(r[1])) for r in R])
-                        dbg_prnt(DBG_LVL_4, '\tP set: %s' % pretty_list(P))
-                        dbg_prnt(DBG_LVL_4, "\tFunction '%s' has depth %d" % (v[0].name, cost))
-
                     else:
                         R = []                      # in that case, R is empty
                         

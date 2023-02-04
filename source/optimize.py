@@ -369,16 +369,6 @@ class optimize( C.compile ):
 
         self._calc_stats()                          # re-calculate statistics
 
-        # At this point we can make IR immutable, as we won't make any changes to it.
-
-        dbg_prnt(DBG_LVL_2, 'Optimized IR:')
-
-        for pc, group in self.__ir:                 # print optimized IR
-            dbg_prnt(DBG_LVL_2, '%s %s %s' % ('-'*32, pc, '-'*32))
-            
-            for stmt in group:
-                dbg_arb(DBG_LVL_2, '', stmt)
-
 
  
     # ---------------------------------------------------------------------------------------------
@@ -401,84 +391,3 @@ class optimize( C.compile ):
         return self.__ir
 
 
-
-    # ---------------------------------------------------------------------------------------------
-    # emit(): Emit IR and save it into a file
-    #
-    # :Ret: None.
-    #
-    def emit( self, filename ):
-        dbg_prnt(DBG_LVL_1, "Writing SPL IR to a file...")    
-         
-        try:    
-            file = open(filename + '.ir', 'w')
-
-            for pc, stmt_l in self.__ir:
-                for stmt in stmt_l:
-                    opt  = '%s %s ' % (pc, stmt['type'])
-
-                    # -------------------------------------------------------------------
-                    if stmt['type'] == 'varset':
-                        opt += '%s ' % stmt['name']
-                        
-                        for val in stmt['val']:
-                            if isinstance(val, tuple): 
-                                opt += 'var %s ' % val[0]
-                            else:                      
-                                if len(val) != 8:
-                                    for i in range(0, len(val), 8):
-                                        opt += 'num %s ' % val[i:i+8].encode("hex")
-                                        print val[i:i+8],val[i:i+8].encode("hex")
-                                else:
-                                    opt += 'num %s ' % val.encode("hex")
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'regset':
-                        opt += '%d %s ' % (stmt['reg'], stmt['valty'])
-                        if stmt['valty'] == 'num': opt += '%d' % stmt['val']
-                        else:                      opt += '%s' % stmt['val'][0]
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'regmod':
-                        opt += '%d %c %d' % (stmt['reg'], stmt['op'], stmt['val'])
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'memrd':
-                        opt += '%d %d' % (stmt['reg'], stmt['mem'])
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'memwr':
-                        opt += '%d %d' % (stmt['mem'], stmt['val'])
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'label':
-                        pass
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'call':
-                        # dirty is not used at all
-                        opt += '%s %s' % (stmt['name'], ' '.join('%d' % a for a in stmt['args']))
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'cond':
-                        opt += '%d %s %d %s' % (stmt['reg'], stmt['op'], stmt['num'], stmt['target'])
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'jump':
-                        opt += '%s' % stmt['target']
-
-                    # -------------------------------------------------------------------
-                    elif stmt['type'] == 'return':
-                        # dirty is not used at all
-                        opt += '%x' % stmt['target']
-
-
-                    file.write( "%s\n" % opt )
-                       
-            file.close()
-           
-            dbg_prnt(DBG_LVL_1, "Done. SPL IR saved as %s" % filename + '.ir')
-
-        except IOError, err:
-            fatal("Cannot create file: %s" % str(err))    
-
-# -------------------------------------------------------------------------------------------------
