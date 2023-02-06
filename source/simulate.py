@@ -1,16 +1,16 @@
 #!/usr/bin/env python2
 # -------------------------------------------------------------------------------------------------
 #
-#    ,ggggggggggg,     _,gggggg,_      ,ggggggggggg,      ,gggg,  
+#    ,ggggggggggg,     _,gggggg,_      ,ggggggggggg,      ,gggg,
 #   dP"""88""""""Y8, ,d8P""d8P"Y8b,   dP"""88""""""Y8,  ,88"""Y8b,
 #   Yb,  88      `8b,d8'   Y8   "8b,dPYb,  88      `8b d8"     `Y8
 #    `"  88      ,8Pd8'    `Ybaaad88P' `"  88      ,8Pd8'   8b  d8
 #        88aaaad8P" 8P       `""""Y8       88aaaad8P",8I    "Y88P'
-#        88""""Y8ba 8b            d8       88"""""   I8'          
-#        88      `8bY8,          ,8P       88        d8           
-#        88      ,8P`Y8,        ,8P'       88        Y8,          
-#        88_____,d8' `Y8b,,__,,d8P'        88        `Yba,,_____, 
-#       88888888P"     `"Y8888P"'          88          `"Y8888888 
+#        88""""Y8ba 8b            d8       88"""""   I8'
+#        88      `8bY8,          ,8P       88        d8
+#        88      ,8P`Y8,        ,8P'       88        Y8,
+#        88_____,d8' `Y8b,,__,,d8P'        88        `Yba,,_____,
+#       88888888P"     `"Y8888P"'          88          `"Y8888888
 #
 #   The Block Oriented Programming (BOP) Compiler - v2.1
 #
@@ -34,15 +34,11 @@
 #
 # -------------------------------------------------------------------------------------------------
 from coreutils import *
-import path
 
 import angr
 import archinfo
-import struct
 import copy
 import time
-
-
 
 # ------------------------------------------------------------------------------------------------
 # Constant Definitions
@@ -50,35 +46,35 @@ import time
 
 # WARNING: In case that relative addresses fail, adjust them.
 # TODO: Add command line options for them.
-MAX_MEM_UNIT_BYTES      = 8                         # max. memory unit size (for x64 is 8 bytes)
-MAX_MEM_UNIT_BITS       = MAX_MEM_UNIT_BYTES << 3   # max. memory unit size in bits
+MAX_MEM_UNIT_BYTES = 8  # max. memory unit size (for x64 is 8 bytes)
+MAX_MEM_UNIT_BITS = MAX_MEM_UNIT_BYTES << 3  # max. memory unit size in bits
 
-ALLOCATOR_BASE_ADDR     = 0xd8000000                # the base address of the allocator
-ALLOCATOR_GRANULARITY   = 0x1000                    # the allocation size
-ALLOCATOR_CEIL_ADDR     = 0xd9000000                # the upper bound of the allocator
-ALLOCATOR_NAME          = '$alloca'
-                          
-POOLVAR_BASE_ADDR       = 0xca000000                # the base address of the pool
-POOLVAR_GRANULARITY     = 0x1000                    # (safe) offset between pools
-POOLVAR_NAME            = '$pool'
+ALLOCATOR_BASE_ADDR = 0xd8000000  # the base address of the allocator
+ALLOCATOR_GRANULARITY = 0x1000  # the allocation size
+ALLOCATOR_CEIL_ADDR = 0xd9000000  # the upper bound of the allocator
+ALLOCATOR_NAME = '$alloca'
 
-SIM_MODE_INVALID        = 0xffff                    # invalid simulation mode
-SIM_MODE_FUNCTIONAL     = 0x0001                    # simulation mode: Functional
-SIM_MODE_DISPATCH       = 0x0000                    # simulation mode: Dispath
+POOLVAR_BASE_ADDR = 0xca000000  # the base address of the pool
+POOLVAR_GRANULARITY = 0x1000  # (safe) offset between pools
+POOLVAR_NAME = '$pool'
+
+SIM_MODE_INVALID = 0xffff  # invalid simulation mode
+SIM_MODE_FUNCTIONAL = 0x0001  # simulation mode: Functional
+SIM_MODE_DISPATCH = 0x0000  # simulation mode: Dispath
 
 MAX_BOUND = 0x4000
 
-
 # addresses that are not recognized as R/W but they are
 _whitelist_ = [
-    0x2010028,                                      # fs:0x28
-    0xc0000000,                                     # __errno_location
-    0xc0000070                                      # fopen() internal
+    0x2010028,  # fs:0x28
+    0xc0000000,  # __errno_location
+    0xc0000070  # fopen() internal
 ]
 
 
 
 EXTERNAL_UNINITIALIZED = -1
+
 
 # -------------------------------------------------------------------------------------------------
 # simulate: This class simulates the execution between a pair of accepted blocks
@@ -88,38 +84,37 @@ class simulate:
     '''                             INTERNAL FUNCTIONS - AUXILIARY                              '''
     ''' ======================================================================================= '''
 
-
     # ---------------------------------------------------------------------------------------------
     # __in_constraints(): This function checks whether a symbolic variable is part of the
     #       constraints.
     #
     # :Arg symv: The symbolic variable to check
-    # :Arg state: Current state of the symbolic execution    
+    # :Arg state: Current state of the symbolic execution
     # :Ret: If symv is in constraints, function returns True. Otherwise it returns False.
     #
-    def __in_constraints( self, symv, state=None ):
-        if not state:                               # if no state is given, use the current one
+    def __in_constraints(self, symv, state=None):
+        if not state:  # if no state is given, use the current one
             state = self.__state
-
 
         # drop the "uninitialized" thing from everywhere
         symvstr = symv.shallow_repr().replace("{UNINITIALIZED}", "")
 
-        # We may have this in the constraints: 
+        # We may have this in the constraints:
         #   <Bool Reverse(mem_801_64[7:0] .. Reverse(mem_801_64)[55:0]) != 0x0>
         #
         # But symvstr is:
         #   <BV64 Reverse(mem_801_64[7:0] .. Reverse(mem_801_64)[55:0])>
+        #
+        # A quick fix is to drop the type:
 
         symvstr2 = symvstr[symvstr.find(' '):-1]
-   
 
-        # this is the old style check 
+
+        # this is the old style check
         if symvstr2 in ' '.join([c.shallow_repr().replace("{UNINITIALIZED}", "") \
-                                    for c in state.se.constraints]):
+                                 for c in state.se.constraints]):
             return True
 
-        
         # reinforce function with a stronger check
         for constraint in state.se.constraints:
 
@@ -130,13 +125,12 @@ class simulate:
                     # we can't compare them directly, so we cast them into strings first
                     # (not a very "clean" way to do that, but it works)
                     if leaf.shallow_repr().replace("{UNINITIALIZED}", "") == symvstr:
-                        return True                 # symbolic variable found!
+                        return True  # symbolic variable found!
 
             except Exception, err:
                 pass
 
-        return False                                # symbolic variable not found
-
+        return False  # symbolic variable not found
 
     # ---------------------------------------------------------------------------------------------
     # __getreg(): Get the symbolic value of a register that has in the current state.
@@ -145,35 +139,33 @@ class simulate:
     # :Arg state: Current state of the symbolic execution
     # :Ret: The symbolic value for that register.
     #
-    def __getreg( self, reg, state=None ):
-        if not state:                               # if no state is given, use the current one
+    def __getreg(self, reg, state=None):
+        if not state:  # if no state is given, use the current one
             state = self.__state
 
         try:
-            return {    
-                'rax' : state.regs.rax,
-                'rbx' : state.regs.rbx,
-                'rcx' : state.regs.rcx,
-                'rdx' : state.regs.rdx,
-                'rsi' : state.regs.rsi,
-                'rdi' : state.regs.rdi,
-                'rbp' : state.regs.rbp,
-                'rsp' : state.regs.rsp,
-                'r8'  : state.regs.r8,
-                'r08' : state.regs.r8,
-                'r9'  : state.regs.r9,
-                'r09' : state.regs.r9,
-                'r10' : state.regs.r10,
-                'r11' : state.regs.r11,
-                'r12' : state.regs.r12,
-                'r13' : state.regs.r13,
-                'r14' : state.regs.r14,
-                'r15' : state.regs.r15,
-            }[ reg ]
+            return {
+                'rax': state.regs.rax,
+                'rbx': state.regs.rbx,
+                'rcx': state.regs.rcx,
+                'rdx': state.regs.rdx,
+                'rsi': state.regs.rsi,
+                'rdi': state.regs.rdi,
+                'rbp': state.regs.rbp,
+                'rsp': state.regs.rsp,
+                'r8': state.regs.r8,
+                'r08': state.regs.r8,
+                'r9': state.regs.r9,
+                'r09': state.regs.r9,
+                'r10': state.regs.r10,
+                'r11': state.regs.r11,
+                'r12': state.regs.r12,
+                'r13': state.regs.r13,
+                'r14': state.regs.r14,
+                'r15': state.regs.r15,
+            }[reg]
         except KeyError:
             fatal("Unknow register '%s'" % reg)
-
-
 
     # ---------------------------------------------------------------------------------------------
     # __mread(): This function reads from memory. The problem here is that we have to explicitly
@@ -186,11 +178,9 @@ class simulate:
     # :Arg length: Number of bytes to read
     # :Ret: The contents of the desired memory "area".
     #
-    def __mread( self, state, addr, length ):
-       # dbg_prnt(DBG_LVL_3, "Reading %d bytes from 0x%x" % (length, addr))
+    def __mread(self, state, addr, length):
 
         return state.memory.load(addr, length, endness=archinfo.Endness.LE)
-
 
 
 
@@ -202,34 +192,32 @@ class simulate:
     # :Arg length: Number of bytes to write
     # :Ret: None.
     #
-    def __mwrite( self, state, addr, length, value ):
+    def __mwrite(self, state, addr, length, value):
         state.memory.store(addr, value, length, endness=archinfo.Endness.LE)
 
 
 
-
     # ---------------------------------------------------------------------------------------------
-    # __get_permissions(): Get 
+    # __get_permissions(): Get
     #
     # :Arg state: Current state of the symbolic execution
     # :Arg addr: Address to write to
     # :Arg length: Number of bytes to write
     # :Ret: None.
     #
-    def __get_permissions( self, addr, length=1, state=None ):
-        if not state:                               # if no state is given, use the current one
+    def __get_permissions(self, addr, length=1, state=None):
+        if not state:  # if no state is given, use the current one
             state = self.__state
 
-        # TODO: check permissions for addr+1, addr+2, ... addr+length-1
-        #warn('POOL UPPER BOUND %x' % (POOLVAR_BASE_ADDR + self.__plsz))
 
         # special cases first
         if addr < 0x10000:
             return ''
 
         elif ALLOCATOR_BASE_ADDR <= addr and addr <= ALLOCATOR_CEIL_ADDR:
-            return 'RW'   
+            return 'RW'
 
+            # TOOD:!!! 0x10000
         elif POOLVAR_BASE_ADDR <= addr and addr <= POOLVAR_BASE_ADDR + self.__plsz + 0x1000:
             return 'RW'
 
@@ -238,24 +226,21 @@ class simulate:
         elif addr & 0x07ffffffffff0000 == 0x07ffffffffff0000:
             return 'RW'
 
-
-        try:                    
-            for _, sec in  self.__proj.loader.main_object.sections_map.iteritems():
-                if sec.contains_addr(addr):                    
-                    return ('R' if sec.is_readable   else '') + \
-                           ('W' if sec.is_writable   else '') + \
-                           ('X' if sec.is_executable else '')
+        try:
+            for _, sec in self.__proj.loader.main_object.sections_map.iteritems():
+                if sec.contains_addr(addr):
+                    return ('R' if sec.is_readable else '') + \
+                        ('W' if sec.is_writable else '') + \
+                        ('X' if sec.is_executable else '')
 
             permissions = state.se.eval(state.memory.permissions(addr))
 
             return ('R' if permissions & 4 else '') + \
-                   ('W' if permissions & 2 else '') + \
-                   ('X' if permissions & 1 else '')
+                ('W' if permissions & 2 else '') + \
+                ('X' if permissions & 1 else '')
 
-        except angr.errors.SimMemoryError:       
-            return ''                               # no permissions at all
- 
-
+        except angr.errors.SimMemoryError:
+            return ''  # no permissions at all
 
     # ---------------------------------------------------------------------------------------------
     # __symv_in(): Check whether a symbolic expression contains a given symbolic variable.
@@ -264,39 +249,35 @@ class simulate:
     # :Arg symv: The symbolic variable to look for
     # :Ret: If symexpr contains symv, function returns True. Otherwise it returns False.
     #
-    def __symv_in( self, symexpr, symv ):
-        if symexpr == None or symv == None:         # check special cases
+    def __symv_in(self, symexpr, symv):
+        if symexpr == None or symv == None:  # check special cases
             return False
-            
+
 
         try:
             # treat symexpr as an AST and iterate over its leaves
             for leaf in symexpr.recursive_leaf_asts:
-                
+
                 # we can't compare them directly, so we cast them into strings first
                 # (not a very "clean" way to do that, but it works)
-                if leaf.shallow_repr() == symv.shallow_repr():  
-                    return True                     # variable found!
+                if leaf.shallow_repr() == symv.shallow_repr():
+                    return True  # variable found!
 
-            return False                            # variable not found
+            return False  # variable not found
 
         except Exception, err:
-            # This --> BOPC.py -ddd -b eval/nginx/nginx1 -s payloads/ifelse.spl -a load -f gdb -e -1
-            # fatal('__symv_in() unexpected exception: %s' % str(err))
-
             raise Exception('__symv_in() unexpected exception: %s' % str(err))
-
 
 
     # ---------------------------------------------------------------------------------------------
     # __alloc_un(): "Allocate" memory for uninitialized symbolic variables (if needed).
     #
     # :Arg state: Current symbolic state of the execution
-    # :Arg symv: The symbolic variable 
+    # :Arg symv: The symbolic variable
     # :Ret: If symv is uninitialized, function returns True; otherwise it returns False.
     #
-    def __alloc_un( self, state, symv ):
-        if symv == None:                            # make sure that variable is valid  
+    def __alloc_un(self, state, symv):
+        if symv == None:  # make sure that variable is valid
             return False
 
         # This code works fine for single variables but not for expressions:
@@ -308,20 +289,15 @@ class simulate:
         # # After calling __alloc_un(), a variable will still have the UNINITIALIZED keyword
         # # even though, it has a single solution. Avoid initializing a variable twice.
         #
-        # con = state.se.eval_upto(symv, 2)           # try to get 2 solutions
-        # addr = state.se.eval(con[0])
         #
-        # if len(con) > 1 or not (addr >= ALLOCATOR_BASE_ADDR and addr <= ALLOCATOR_CEIL_ADDR):
-        #     # initialize variable
-        addr = state.se.eval(symv)                  # try to concretize it
-
+        addr = state.se.eval(symv)  # try to concretize it
 
 
         # we say < 0x1000, to catch cases with small offsets:
         # e.g., *<BV64 Reverse(stack_16660_262144[258239:258176]) + 0x68>
-        # which gets concretized to 0x68 
+        # which gets concretized to 0x68
         if addr < 0x1000 or addr > 0xfffffffffffff000:
-        # if addr == 0: # < ALLOCATOR_BASE_ADDR or addr > ALLOCATOR_CEIL_ADDR
+            # if addr == 0: # < ALLOCATOR_BASE_ADDR or addr > ALLOCATOR_CEIL_ADDR
 
             alloca = ALLOCATOR_BASE_ADDR + self.__alloc_size
 
@@ -336,23 +312,17 @@ class simulate:
             state.add_constraints(x == alloca + addr)
             state.add_constraints(symv == x)
 
-            # 
-            # print '-->', symv, 'goes to ', hex(alloca + addr)
 
             self.__relative[alloca] = '%s + 0x%03x' % (ALLOCATOR_NAME, self.__alloc_size)
 
-            
-            self.__sym[ alloca ] = symv
+            self.__sym[alloca] = symv
 
             # shift allocator
             self.__alloc_size += ALLOCATOR_GRANULARITY
 
-            
-            return True                             # we had an allocation            
-        
-        return False                                # no allocation
+            return True  # we had an allocation
 
-
+        return False  # no allocation
 
     # ---------------------------------------------------------------------------------------------
     # __init_mem(): This function initializes (if needed) a memory cell. When we start execution
@@ -369,53 +339,45 @@ class simulate:
     # :Arg length: Length of the variable
     # :Ret: If memory was initialized, function returns True. Otherwise it returns False.
     #
-    def __init_mem( self, state, addr, length=MAX_MEM_UNIT_BYTES ):
-        if addr in self.__mem:                      # memory cell is already initialized
+    def __init_mem(self, state, addr, length=MAX_MEM_UNIT_BYTES):
+        if addr in self.__mem:  # memory cell is already initialized
             return False
-        
-        self.__mem[addr] = length                   # simply mark used addresses
+
+        self.__mem[addr] = length  # simply mark used addresses
 
         # get ELF sections that give default values to their uninitialized variables
-        bss  = self.__proj.loader.main_object.sections_map[".bss"]
+        bss = self.__proj.loader.main_object.sections_map[".bss"]
         data = self.__proj.loader.main_object.sections_map[".data"]
 
-
+        # print 'INIT MEMORY', hex(addr), self.__mread(state, addr, length)
 
         # if the memory cell is empty (None) or if the cell is initialized with a
-        # default value, then we should give it a symbolic variable. You can also use: 
+        # default value, then we should give it a symbolic variable. You can also use:
         #       state.inspect.mem_read_expr == None:
         #
-        if  self.__mread(state, addr, length) == None             or \
-            bss.min_addr        <= addr and addr <= bss.max_addr  or \
-            data.min_addr       <= addr and addr <= data.max_addr or \
-            ALLOCATOR_BASE_ADDR <= addr and addr <= ALLOCATOR_CEIL_ADDR:
-            # bss.min_addr  <= addr and addr + length <= bss.max_addr  or \
-            # data.min_addr <= addr and addr + length <= data.max_addr:
+        if self.__mread(state, addr, length) == None or \
+                bss.min_addr <= addr and addr <= bss.max_addr or \
+                data.min_addr <= addr and addr <= data.max_addr or \
+                ALLOCATOR_BASE_ADDR <= addr and addr <= ALLOCATOR_CEIL_ADDR:
 
-                # Alternative: state.memory.make_symbolic('mem', addr, length << 3) (big endian)
-                symv = state.se.BVS("mem_%x" % addr, length << 3)
+            # Alternative: state.memory.make_symbolic('mem', addr, length << 3) (big endian)
+            symv = state.se.BVS("mem_%x" % addr, length << 3)
 
+            # write symbolic variable to both states (current and original)
+            self.__mwrite(state, addr, length, symv)
+            self.__mwrite(self.__origst, addr, length, symv)
 
-                # write symbolic variable to both states (current and original)
-                self.__mwrite(state,         addr, length, symv)
-                self.__mwrite(self.__origst, addr, length, symv)
+            # get symbolic variable
+            self.__sym[addr] = self.__mread(state, addr, length)
 
-                # get symbolic variable
-                self.__sym[ addr ] = self.__mread(state, addr, length)
-
-                return True                         # memory initialized
-
+            return True  # memory initialized
 
         # if it's uninitialized, simply add it variable to the __sym table
         # (but memory is not initialized at all)
         if "{UNINITIALIZED}" in self.__mread(state, addr, length).shallow_repr():
-            self.__sym[ addr ] = self.__mread(state, addr, length)            
+            self.__sym[addr] = self.__mread(state, addr, length)
 
-
-
-        return False                                # memory not initialized
-
-
+        return False  # memory not initialized
 
     # ---------------------------------------------------------------------------------------------
 
@@ -429,8 +391,8 @@ class simulate:
     # :Arg state: Current state of the symbolic execution
     # :Ret: None.
     #
-    def __dbg_read_hook( self, state ):
-        if self.__disable_hooks:                    # if hooks are disabled, abort
+    def __dbg_read_hook(self, state):
+        if self.__disable_hooks:  # if hooks are disabled, abort
             return
 
         # if you read/write memory inside the hook, this operation will trigger __dbg_read_hook()
@@ -438,14 +400,8 @@ class simulate:
         # disable hooks inside function's body. This is pretty much like a mutex.
         self.__disable_hooks = True
 
-        # TODO: the idea of simulation modes is not perfect
-        #   a block can modify the data unintentionally
-        #
-        # update simulation mode
-
 
         print 'state.inspect.mem_read_address', state.inspect.mem_read_address
-
 
         # if the address is an uninitialized symbolic variable, it can point to any location,
         # thus, when it's being evaluated it gets a value of 0. To fix this, we "allocate" some
@@ -457,32 +413,26 @@ class simulate:
 
         # concretize size (newer versions of angr never set state.inspect.mem_read_length to None)
         if state.inspect.mem_read_length == None:
-            size = MAX_MEM_UNIT_BYTES               # if size is None, set it to default
+            size = MAX_MEM_UNIT_BYTES  # if size is None, set it to default
         else:
             size = state.se.eval(state.inspect.mem_read_length)
 
-
-        self.__init_mem(state, addr, size)          # initialize memory (if needed)
-        
+        self.__init_mem(state, addr, size)  # initialize memory (if needed)
 
         if state.inspect.instruction:
             insn_addr = state.inspect.instruction
         else:
             insn_addr = state.addr
 
-        dbg_prnt(DBG_LVL_3, '\t0x%08x: mem[0x%x] = %s (%x bytes)' % 
-                    (insn_addr, addr, self.__mread(state, addr, size), size), pre='[R] ')
-        
+        dbg_prnt(DBG_LVL_3, '\t0x%08x: mem[0x%x] = %s (%x bytes)' %
+                 (insn_addr, addr, self.__mread(state, addr, size), size), pre='[R] ')
 
         # make sure that the address that you read from has +R permissions
         # TODO: fs:0x28 (canary hits an error here) 0x2010028
         if 'R' not in self.__get_permissions(addr, state) and addr not in _whitelist_:
             raise Exception("Attempted to read from an non-readable address '0x%x'" % addr)
 
-
-        self.__disable_hooks = False                # release "lock" (i.e., enable hooks again)
-
-
+        self.__disable_hooks = False  # release "lock" (i.e., enable hooks again)
 
     # ---------------------------------------------------------------------------------------------
     # __dbg_write_hook(): This callback function is invoked when a memory "area" is being written.
@@ -490,20 +440,18 @@ class simulate:
     # :Arg state: Current state of the symbolic execution
     # :Ret: None.
     #
-    def __dbg_write_hook( self, state ):
-        if self.__disable_hooks:                    # if hooks are disabled, abort
+    def __dbg_write_hook(self, state):
+        if self.__disable_hooks:  # if hooks are disabled, abort
             return
-        
+
         # as in __dbg_read_hook(), we need mutual exclusion here as well
         self.__disable_hooks = True
-
 
 
         if state.inspect.instruction:
             insn_addr = state.inspect.instruction
         else:
             insn_addr = state.addr
-
 
         # as in __dbg_read_hook(), fix uninitialized addresses first
         self.__alloc_un(state, state.inspect.mem_write_address)
@@ -513,47 +461,39 @@ class simulate:
 
         # concretize size (newer versions of angr never set state.inspect.mem_read_length to None)
         if state.inspect.mem_write_length == None:
-            size = MAX_MEM_UNIT_BYTES               # if size is None, set it to default
+            size = MAX_MEM_UNIT_BYTES  # if size is None, set it to default
         else:
             size = state.se.eval(state.inspect.mem_write_length)
-        
 
-        dbg_prnt(DBG_LVL_3, '\t0x%08x: mem[0x%x] = %s (%x bytes)' % 
-                    (insn_addr, addr, state.inspect.mem_write_expr, size), pre='[W] ')
+        dbg_prnt(DBG_LVL_3, '\t0x%08x: mem[0x%x] = %s (%x bytes)' %
+                 (insn_addr, addr, state.inspect.mem_write_expr, size), pre='[W] ')
 
-        
 
         if 'W' not in self.__get_permissions(addr, state) and addr not in _whitelist_:
             raise Exception("Attempted to write to an non-writable address '0x%x'" % addr)
-            
 
         # if we are trying to write to an immutable cell, currect execution path must be discarded
-        if self.__sim_mode == SIM_MODE_DISPATCH: 
+        if self.__sim_mode == SIM_MODE_DISPATCH:
             if addr in self.__imm:
 
                 oldval = state.se.eval(state.memory.load(addr, size))
                 newval = state.se.eval(state.inspect.mem_write_expr)
 
-                
-                # if the new value is the same with the old one, we're good :)                
-                if oldval != newval:            # if value really changes
+                # if the new value is the same with the old one, we're good :)
+                if oldval != newval:  # if value really changes
                     self.__disable_hooks = False
-                    
+
                     raise Exception("Attempted to write to immutable address '0x%x'" % addr)
 
-
-
         if state.inspect.mem_write_expr in self.__ext:
-            
-            self.__ext[ state.inspect.mem_write_expr ] = addr
+            self.__ext[state.inspect.mem_write_expr] = addr
 
-        
         # if it's not the 1st time that you see this address
         if not self.__init_mem(state, addr, size):
 
             # if address is not concretized already and it's in the symbolic variable set
             if not isinstance(self.__mem[addr], tuple) and addr in self.__sym:
-                symv = self.__sym[ addr ]           # get symbolic variable
+                symv = self.__sym[addr]  # get symbolic variable
 
                 # check whether symbolic variable persists after write
                 if not self.__symv_in(state.inspect.mem_write_expr, symv):
@@ -572,33 +512,24 @@ class simulate:
                     # get a value of 0, which of course is not the desired one. The coorect
                     # approach, is to concretize, right before it gets overwritten.
 
-
                     # if variable is part of the constraints, add it to the set
                     if self.__in_constraints(symv, state):
-                        val = state.se.eval(symv) # self.__mread(state, addr, size))
+                        val = state.se.eval(symv)  # self.__mread(state, addr, size))
                         self.__mem[addr] = (val, size)
 
-                        emph('Address/Value pair found: *0x%x = 0x%x (%d bytes)' % 
-                                (addr, val, size), DBG_LVL_2)
+                        emph('Address/Value pair found: *0x%x = 0x%x (%d bytes)' %
+                             (addr, val, size), DBG_LVL_2)
 
                     # if the contents of that cell get lost, we cannot use AWP to write to it
                     # anymore
                     #
                     # TODO: Not sure if this correct
                     # UPDATE: Immutables should be fine when we write them with the exact same valut
-#                    for i in range(8):
-#                        self.__imm.add(addr + i)
-
-        
-#        print 'AFTER', self.__mread(state, addr, size),  state.inspect.mem_write_expr
-#        self.FOO[ self.__mread(state, addr, size) ]  = ISPO
 
         # All external inputs (sockets, file descriptors, etc.) should be first written somewhere
-        # in memory / registers eventually, so we can concretize them afterwards   
+        # in memory / registers eventually, so we can concretize them afterwards
 
-        self.__disable_hooks = False                # release "lock" (i.e., enable hooks again)
-
-
+        self.__disable_hooks = False  # release "lock" (i.e., enable hooks again)
 
     # ---------------------------------------------------------------------------------------------
     # __dbg_symv_hook(): This callback function is invoked when a new symbolic variable is being
@@ -607,21 +538,18 @@ class simulate:
     # :Arg state: Current state of the symbolic execution
     # :Ret: None.
     #
-    def __dbg_symv_hook( self, state ):
-        name = state.inspect.symbolic_name          # get name of the variable
+    def __dbg_symv_hook(self, state):
+        name = state.inspect.symbolic_name  # get name of the variable
 
-        # we're only interested in symbolic variables that come from external inputs (sockets, 
+        # we're only interested in symbolic variables that come from external inputs (sockets,
         # file descriptors, etc.), as register and memory symbolic variables are already been
-        # handled. 
+        # handled.
         if not name.startswith('mem_') and not name.startswith('reg_') \
-            and not name.startswith('x_') and not name.startswith('cond_'):
-            
+                and not name.startswith('x_') and not name.startswith('cond_'):
             # x  and cond are our variable so they're discarded too
             dbg_prnt(DBG_LVL_3, " New symbolic variable '%s'" % name, pre='[S]')
 
-            self.__ext[ state.inspect.symbolic_expr ] = EXTERNAL_UNINITIALIZED
-
-
+            self.__ext[state.inspect.symbolic_expr] = EXTERNAL_UNINITIALIZED
 
 
     # ---------------------------------------------------------------------------------------------
@@ -630,32 +558,29 @@ class simulate:
     # :Arg state: Current state of the symbolic execution
     # :Ret: None.
     #
-    def __dbg_reg_wr_hook( self, state ):    
-        if self.__disable_hooks:                    # if hooks are disabled, abort
+    def __dbg_reg_wr_hook(self, state):
+        if self.__disable_hooks:  # if hooks are disabled, abort
             return
 
         # as in __dbg_read_hook(), we need mutual exclusion here as well
         self.__disable_hooks = True
 
-  
 
         if state.inspect.instruction:
             insn_addr = state.inspect.instruction
         else:
             insn_addr = state.addr
-        
+
         # get register name (no exceptions here)
-        regnam = state.arch.register_names[ state.inspect.reg_write_offset ]
-        if regnam in HARDWARE_REGISTERS:            # we don't care about all registers (rip, etc.)
+        regnam = state.arch.register_names[state.inspect.reg_write_offset]
+        if regnam in HARDWARE_REGISTERS:  # we don't care about all registers (rip, etc.)
 
-            dbg_prnt(DBG_LVL_3, '\t0x%08x: %s = %s' % 
-                        (insn_addr, regnam, state.inspect.reg_write_expr), pre='[r] ')
-
+            dbg_prnt(DBG_LVL_3, '\t0x%08x: %s = %s' %
+                     (insn_addr, regnam, state.inspect.reg_write_expr), pre='[r] ')
 
             # if simulation is in dispatch mode, check whether the modified register is immutable
             if self.__sim_mode == SIM_MODE_DISPATCH:
 
-                # print 'IMM REGS', self.__imm_regs
                 if regnam in self.__imm_regs:
 
                     # if the new value is the same with the old one, we're good :)
@@ -666,7 +591,7 @@ class simulate:
 
                     # if value really changes (and it has changed in the past)
                     if oldval != newval and \
-                        self.__getreg(regnam).shallow_repr() != self.__inireg[regnam].shallow_repr():
+                            self.__getreg(regnam).shallow_repr() != self.__inireg[regnam].shallow_repr():
                         self.__disable_hooks = False
 
                         raise Exception("Attempted to write to immutable register '%s'" % regnam)
@@ -674,13 +599,11 @@ class simulate:
                     else:
                         print "immutable register '%s' overwritten with same value 0x%x" % (regnam, newval)
 
-
             # check whether symbolic variable persists after write
             if not self.__symv_in(state.inspect.reg_write_expr, self.__inireg[regnam]):
-                if regnam not in self.__reg:        # if register is already concretized, skip it
-                    # concretize register (after this point, its value will get lost)                
-                    val = state.se.eval( self.__getreg(regnam, state) )
-
+                if regnam not in self.__reg:  # if register is already concretized, skip it
+                    # concretize register (after this point, its value will get lost)
+                    val = state.se.eval(self.__getreg(regnam, state))
 
                     # if register is in the constraints, it should be part of the solution.
                     # But in any case we need the register to be in __reg, as its value is now
@@ -688,17 +611,14 @@ class simulate:
                     # solution.
 
                     if self.__in_constraints(self.__inireg[regnam], state):
-                        self.__reg[ regnam ] = val
+                        self.__reg[regnam] = val
 
                         emph('Register found: %s = %x' % (regnam, val), DBG_LVL_2)
                     else:
                         # make it a tuple to distinguish the 2 cases
-                        self.__reg[ regnam ] = (val,)
+                        self.__reg[regnam] = (val,)
 
-
-        self.__disable_hooks = False                # release "lock" (i.e., enable hooks again)
-
-
+        self.__disable_hooks = False  # release "lock" (i.e., enable hooks again)
 
     # ---------------------------------------------------------------------------------------------
     # __dbg_call_hook(): This callback function is invoked when a function is invoked.
@@ -706,18 +626,17 @@ class simulate:
     # :Arg state: Current state of the symbolic execution
     # :Ret: None.
     #
-    def __dbg_call_hook( self, state ):
-        if self.__disable_hooks:                    # if hooks are disabled, abort
+    def __dbg_call_hook(self, state):
+        if self.__disable_hooks:  # if hooks are disabled, abort
             return
 
         # as in __dbg_read_hook(), we need mutual exclusion here as well
         self.__disable_hooks = True
 
         address = state.se.eval(state.inspect.function_address)
-        name    = self.__proj.kb.functions[address].name
+        name = self.__proj.kb.functions[address].name
 
-        # This function is called to solve a difficult problem: Crashes. 
-        # TODO: elaborate.
+        # This function is called to solve a difficult problem: Crashes.
 
         dbg_prnt(DBG_LVL_3, "\tCall to '%s' found." % name, pre='[C] ')
 
@@ -725,6 +644,7 @@ class simulate:
         # FILE *fopen(const char *path, const char *mode)
         # ---------------------------------------------------------------------
         if name == 'fopen':
+
             # if rdi is an expression then we may need to
 
             # we work similarly with __mem_RSVPs, but our task here is simpler
@@ -733,13 +653,11 @@ class simulate:
 
             if 'W' not in self.__get_permissions(con_addr, state):
                 self.__alloc_un(state, state.regs.rdi)
-                #raise Exception("Attempted to write to an non-writable address '0x%x'" % addr)
-        
+                # raise Exception("Attempted to write to an non-writable address '0x%x'" % addr)
+
             con_addr = state.se.eval(state.regs.rdi)
-            # print 'ADDR', hex(con_addr)
 
             name = SYMBOLIC_FILENAME
-          
 
             # if this address has already been written in the past, any writes will
             # be overwritten, so discard current path
@@ -752,198 +670,17 @@ class simulate:
                 self.__mwrite(state, con_addr + i, 1, name[i])
                 self.__imm.add(con_addr + i)
 
-            
-            self.__inivar_rel[ con_addr ] = name
-            self.__mem[ con_addr ] = 0
+            self.__inivar_rel[con_addr] = name
+            self.__mem[con_addr] = 0
             dbg_prnt(DBG_LVL_2, "Writing call *0x%x = '%s'" % (con_addr, name))
 
 
-        self.__disable_hooks = False                # release "lock" (i.e., enable hooks again)
-
-
-
-
-    ''' ======================================================================================= '''
-    '''                         INTERNAL FUNCTIONS - MEMORY MANAGEMENT                          '''
-    ''' ======================================================================================= '''
-
-    # ---------------------------------------------------------------------------------------------
-    # __get_var_values(): Get the values of an SPL variable (there can be >1)
-    #
-    # :Arg variable: The SPL variable
-    # :Ret: The values of that variable.
-    #
-    def __get_var_values( self, variable ):
-        # look for the declaration of "variable" (SPL compiler ensures it's uniqueness)
-        for stmt in self.__IR:
-            if stmt['type'] == 'varset' and stmt['name'] == variable:
-                return stmt['val']
-
-        # this should never be executed
-        fatal("Searching for non-existing variable '%s'" % variable)
+        self.__disable_hooks = False  # release "lock" (i.e., enable hooks again)
 
 
 
     # ---------------------------------------------------------------------------------------------
-    # __pool_RSVP(): Reserve some address space in the pool, to store a variable.
-    #
-    # :Arg variable: The SPL variable
-    # :Ret: The values of that variable.
-    #
-    def __pool_RSVP( self, variable ):        
-        addr = POOLVAR_BASE_ADDR + self.__plsz      # make address pointing to the end of the pool
-        
 
-        self.__relative[ addr ] = '%s + 0x%03x' % (POOLVAR_NAME, self.__plsz)
-
-
-        # reserve some space in the pool to hold variable's values (shift down self.__plsz)
-        # (it's important as recursive calls in __init_variable_rcsv() can overwrite this space)
-        #
-        # NOTE: In current implementation, if there are >1 values, each of them has size 8.
-        #       However we keep the code more general (i.e. independent of SPL compiler) so
-        #       we don't use this observation.
-        self.__plsz += sum(map(lambda v : len(v) if isinstance(v, str) else 8, 
-                                self.__get_var_values(variable)))
-
-        return addr                                 # return that address
-
-
-
-    # ---------------------------------------------------------------------------------------------
-    # __init_variable_rcsv(): Initialize a single SPL variable. This function writes the value(s)
-    #       for that variable in memory. There are 2 types of variables. *Free* and *Register*.
-    #       Free variables have no restrictions and therefore can be stored at any location (due
-    #       to the AWP). Thus we reserve a "memory pool" somewhere in memory and we place all free
-    #       variables there. Register variables are being passed to registers and therefore their
-    #       address must be a valid (+RW) address that is being loaded to a register in a candidate
-    #       block (they are usually on stack / heap).
-    #
-    #       SPL allows variables to get the address of another variable. That is, initializing a
-    #       variable may require to initialize another variable first, and so on. Hence this
-    #       function is recursive. For example consider the following variables (expressed in IR):
-    #       
-    #       {'type':'varset', 'uid':2, 'val':['aaa'],                                 'name':'aaa'}
-    #       {'type':'varset', 'uid':4, 'val':['\x01\x00...\x00', ('aaa',)],           'name':'bbb'}
-    #       {'type':'varset', 'uid':6, 'val':['\x02\x00...\x00', ('aaa',), ('bbb',)], 'name':'ccc'}
-    #       {'type':'varset', 'uid':8, 'val':[('ccc',), '\x03\x00...\x00'],           'name':'ddd'}
-    #
-    #       Here initializing 'ddd', requires to initialize 'ccc' first and to initialize 'ccc' we
-    #       have to initialize 'aaa' and 'bbb', but to initialize 'bbb' we have to also initialize
-    #       'aaa'. The SPL compiler ensures that there not cycles.
-    #
-    # :Arg variable: The variable to initialize
-    # :Ret: The address that the contents of this are stored.
-    #
-    def __init_variable_rcsv( self, variable, depth=0 ):
-        dbg_prnt(DBG_LVL_3, "Initializing variable '%s' (depth: %d)" % (variable, depth))
-        
-        # ---------------------------------------------------------------------
-        # Find the address for that variable
-        # ---------------------------------------------------------------------       
-        if variable in self.__vartab:               # register/used variable?
-            addr = self.__vartab[ variable ]        # variable should be placed at a given location
-            
-            if addr in self.__inivar:               # if variable has already been initialized
-                dbg_prnt(DBG_LVL_3, "'%s' is already initialized." % variable)
-                return addr                         # just return it
-
-
-            # addr can be a number, like 0x7ffffffffff01a0 or a string (dereference)
-            # like "*<BV64 0x7ffffffffff0020>", or "*<BV64 rsi_713_64 + 0x18>".
-            #
-            # If the address gets dereferenced (*X), we store the values into the pool
-            # and write pool's address into X (indirect) at runtime.
-            if isinstance(addr, str):               # is addr a dereference?                
-                addr = self.__pool_RSVP(variable)   # make address pointing to the pool                
-                self.__vartab[ variable ] = addr    # and add it to the vartab
-
-        else:
-            # Variable is not in the vartab => Free. That is, variable can be stored
-            # at any memory location, so we place it on the pool
-            addr = self.__pool_RSVP(variable)
-            self.__vartab[ variable ] = addr
-
-
-        # ---------------------------------------------------------------------
-        # Store the values to that address
-        # ---------------------------------------------------------------------       
-        orig_addr = addr                            # get a backup as address is being modified
-        values    = ''                              # concatenated values
-        relvals   = []                              # values in the relative form
-
-        for val in self.__get_var_values(variable): # for each value
-
-            if isinstance(val, tuple):
-                # Value is a reference to another variable, Recursively initialize the
-                # variable or get its address if it's already initialized. Recursion 
-                # always halts, as SPL compiler ensures that variables aren't used before
-                # they initialized so the following cases can't happen:
-                #       int x = {&x};
-                #       int a = {&b}; int b = 10; 
-
-                # find the address for that variable and pack it
-                address = self.__init_variable_rcsv( val[0], depth+1 )
-                val     = struct.pack("<Q", address)
-
-                relvals.append( address )           # relative value is an address
-
-            else: 
-                relvals.append( val )               # relative value is a string
-
-
-            # at this point, value is a string (SPL compiler 'packs' integers)
-           
-            values += val
-
-    
-        # write value byte-by-byte. Memory address must be immutable;
-        # any writes to it are not allowed
-        for i in range(len(values)):
-            self.__state.memory.store(addr + i, values[i])
-
-            # check if it's already immutable
-            if addr + i in self.__imm:
-                raise Exception('Attempted to write an RSVP to an immutable address')
-
-
-            self.__imm.add(addr + i)
-
-        self.__inivar[ addr ] = values          # mark address as initialized        
-        self.__inivar_rel[ addr ] = relvals     # values in the relative-form 
-
-        addr += len(val)                        # and then shift index to the next value
-        print 'INIVAR_REL:', hex(addr), relvals      
-
-        dbg_prnt(DBG_LVL_3, "Done. '%s' has been initialized at 0x%x" % (variable, orig_addr))
-
-        return orig_addr                            # return variable's original address
-        
-
-
-    # ---------------------------------------------------------------------------------------------
-    # __init_vars(): Initialize the variables of the SPL payload. This function is essentially a
-    #       wrapper of __init_variable_rcsv().
-    #
-    # :Arg varmap: The current variable mapping
-    # :Ret: None.
-    #
-    def __init_vars( self, varmap ):
-        dbg_prnt(DBG_LVL_2, 'Initializing SPL variables...')
-
-        self.__vartab     = dict(varmap[:])         # create a dictionary out of varmap
-        self.__plsz       = 0                       # our pool size
-        self.__inivar_rel = { }                     # values in the relative-form
-
-
-        for var, addr in varmap:                    # for each SPL variable
-            self.__init_variable_rcsv(var)          # recusively store it in memory 
-
-        
-
-
-    # ---------------------------------------------------------------------------------------------
- 
     ''' ======================================================================================= '''
     '''                          INTERNAL FUNCTIONS - TRACE MANAGEMENT                          '''
     ''' ======================================================================================= '''
@@ -958,12 +695,11 @@ class simulate:
     # :Ret: If the subpath can be simulated successfully, function returns the new state for the
     #       symbolic execution. Otherwise, function returns None.
     #
-    def __simulate_subpath( self, sublen, subpath, mode ):
-        emph("Trying subpath (%d): %s" % (sublen, 
-                        ' -> '.join(['0x%x' % p for p in subpath])), DBG_LVL_2)
-   
- 
-        self.__disable_hooks = False                # enable hooks
+    def __simulate_subpath(self, sublen, subpath, mode):
+        emph("Trying subpath (%d): %s" % (sublen,
+                                          ' -> '.join(['0x%x' % p for p in subpath])), DBG_LVL_2)
+
+        self.__disable_hooks = False  # enable hooks
 
 
         # clone current state (so we can revert if subpath extension fails)
@@ -974,24 +710,20 @@ class simulate:
         # create hte simulation manager object
         simgr = self.__proj.factory.simulation_manager(thing=state)
 
+        found = simgr.active[0]  # a.k.a. state
 
-        found = simgr.active[0]                     # a.k.a. state
-        
         dbg_arb(DBG_LVL_3, "BEFORE Constraints: ", found.se.constraints)
 
         # guide the symbolic execution: move from basic block to basic block
         for blk in subpath[1:]:
-            simgr.drop(stash='errored')             # drop errored stashes
-
+            simgr.drop(stash='errored')  # drop errored stashes
 
             self.__sim_mode = mode.pop(0)
 
             try:
                 dbg_prnt(DBG_LVL_3, "Next basic block: 0x%x" % blk)
 
-
                 node = ADDR2NODE[found.addr]
-                # print 'NODE ', node, len(node.instruction_addrs)
 
                 num_inst = len(node.instruction_addrs) if node is not None else None
                 if num_inst:
@@ -1001,55 +733,51 @@ class simulate:
                     simgr.step()
 
 
-            except Exception, msg:                   
+            except Exception, msg:
                 dbg_prnt(DBG_LVL_3, "Subpath failed. Exception raised: '%s'" % bolds(str(msg)))
-                found = None                        # nothing found
-                break                               # abort
+                found = None  # nothing found
+                break  # abort
 
 
             if not simgr.active:
-                # print 'Stashes', simgr.stashes
                 dbg_arb(DBG_LVL_3, "Constraints: ", found.se.constraints)
 
                 dbg_prnt(DBG_LVL_3, "Subpath failed (No 'active' stashes)")
-                found = None                        # nothing found
-                break                               # abort
-        
-    
-            found = None                     # nothing found
+                found = None  # nothing found
+                break  # abort
+
+
+            found = None  # nothing found
 
 
             # drop any active stashes and make found stashes, active so you
-            # can continue the search           
+            # can continue the search
             simgr.move(from_stash='active', to_stash='found', \
-                            filter_func=lambda s: s.addr == blk)
-            
+                       filter_func=lambda s: s.addr == blk)
+
             simgr.drop(stash='active')
             simgr.move(from_stash='found', to_stash='active')
-                    
-            
+
             if simgr.active:
-                found = simgr.active[0]             # TODO: Shall we use .copy() here?
+                found = simgr.active[0]  # TODO: Shall we use .copy() here?
 
                 dbg_prnt(DBG_LVL_3, "Block 0x%x found!" % blk)
                 dbg_arb(DBG_LVL_3, "Constraints: ", found.se.constraints)
-                
 
-        if not found:                               # if nothing found, drop cloned state
-            print 'Stashes', simgr.stashes
+
+        if not found:  # if nothing found, drop cloned state
+            print'Stashes', simgr.stashes
 
             self.unstash_context()
             del state
-        else:            
+        else:
             self.drop_context_stash()
             dbg_prnt(DBG_LVL_3, "Subpath simulated successfully!")
 
 
-        self.__disable_hooks = True                 # hooks should be disabled        
+        self.__disable_hooks = True  # hooks should be disabled
 
-        return found                                # return state (if any)
-
-
+        return found  # return state (if any)
 
     # ---------------------------------------------------------------------------------------------
 
@@ -1063,31 +791,23 @@ class simulate:
     #
     # :Arg project: Instance of angr project
     # :Arg cfg: Binary's CFG
-    # :Arg clobbering: Dictionary of clobbering blocks
-    # :Arg adj: The SPL adjacency list
     # :Arg IR: SPL's Intermediate Representation (IR)
-    # :Arg varmap: The register mapping
-    # :Arg rsvp: The reserved memory addresses for variables
     # :Arg entry: Payload's entry point
     #
-    def __init__( self, project, cfg, clobbering, adj, IR, varmap, rsvp, entry ):
-        self.__proj = project                       # store arguments internally
-        self.__cfg  = cfg
-        self.__IR   = IR
-        self.__rsvp = rsvp
+    def __init__(self, project, __cfg_sp, entry):
+        self.__proj = project  # store arguments internally
 
-        self.__imm    = set()                       # immutable addresses
-        self.__sym    = { }                         # symbolic variables
-        self.__inireg = { }                         # initial register symbolic variables
+        self.__imm = set()  # immutable addresses
+        self.__sym = {}  # symbolic variables
+        self.__inireg = {}  # initial register symbolic variables
 
-        self.__reg = { }                            # final output for registers,
-        self.__mem = { }                            # memory and
-        self.__ext = { }                            # external data (from files, sockets, etc.)
-
+        self.__reg = {}  # final output for registers,
+        self.__mem = {}  # memory and
+        self.__ext = {}  # external data (from files, sockets, etc.)
 
         # 0xca00013b is actually pool_base + 0x13b
-        self.__relative = { }
-        
+        self.__relative = {}
+
         self.condreg = ''
         # regsets that are not checked after block execution
         self.unchecked_regsets = []
@@ -1095,35 +815,31 @@ class simulate:
         # even though we avoid all clobbering blocks from our path, this doesn't mean that
         # registers may not get clobbered. This usally happens inside system or library calls
         # where registers are being changed, even though there are no clobbering blocks.
-        # 
-        # to deal with it, we simply mark a register as immutable after 
+        #
+        # to deal with it, we simply mark a register as immutable after
         #
         # all register that used by SPL are immutable (only functional blocks can modify them)
-        #        
-        self.__imm_regs = set()                     # initially empty; add registers on the fly
+        #
+        self.__imm_regs = set()  # initially empty; add registers on the fly
 
         self.__sim_mode = SIM_MODE_INVALID
 
-        self.FOO = []
 
-
-
-        # the base adress that uninitialized symbolic variables should be allocated 
-        # don't start form 0 to catch allocations that start BEFORE the initial (.e.g. if 
+        # the base adress that uninitialized symbolic variables should be allocated
+        # don't start form 0 to catch allocations that start BEFORE the initial (.e.g. if
         # [rax + 0x20] = ALLOC, then rax will be below allocator)
-        self.__alloc_size = 0x100          
-        
+        self.__alloc_size = 0x100
+
         # create a CFG shortest path object
-        self.__cfg_sp = path._cfg_shortest_path(self.__cfg, clobbering, adj)
+        self.__cfg_sp = __cfg_sp
 
         # create a symbolic execution state
         self.__state = self.__proj.factory.call_state(
-                                    mode       = 'symbolic', 
-                                    addr       = entry, 
-                                    stack_base = STACK_BASE_ADDR, 
-                                    stack_size = 0x10000
-                        )
-
+            mode='symbolic',
+            addr=entry,
+            stack_base=STACK_BASE_ADDR,
+            stack_size=0x10000
+        )
 
         # initialize all registers with a symbolic variable
         self.__state.regs.rax = self.__state.se.BVS("rax", 64)
@@ -1132,20 +848,20 @@ class simulate:
         self.__state.regs.rdx = self.__state.se.BVS("rdx", 64)
         self.__state.regs.rsi = self.__state.se.BVS("rsi", 64)
         self.__state.regs.rdi = self.__state.se.BVS("rdi", 64)
-        
+
         # rsp must be concrete and properly initialized
         self.__state.registers.store('rsp', RSP_BASE_ADDR, size=8)
 
-        # rbp may also needed as it's mostly used to access local variables (e.g., 
+        # rbp may also needed as it's mostly used to access local variables (e.g.,
         # rax = [rbp-0x40]) but some binaries don't use rbp and all references are
         # rsp related. In these cases it may worth to use rbp as well.
         if MAKE_RBP_SYMBOLIC:
             self.__state.regs.rbp = self.__state.se.BVS("rbp", 64)
         else:
-            self.__state.registers.store('rbp', FRAMEPTR_BASE_ADDR, size=8)        
+            self.__state.registers.store('rbp', FRAMEPTR_BASE_ADDR, size=8)
 
-        self.__state.regs.r8  = self.__state.se.BVS("r08", 64)
-        self.__state.regs.r9  = self.__state.se.BVS("r09", 64)
+        self.__state.regs.r8 = self.__state.se.BVS("r08", 64)
+        self.__state.regs.r9 = self.__state.se.BVS("r09", 64)
         self.__state.regs.r10 = self.__state.se.BVS("r10", 64)
         self.__state.regs.r11 = self.__state.se.BVS("r11", 64)
         self.__state.regs.r12 = self.__state.se.BVS("r12", 64)
@@ -1153,52 +869,39 @@ class simulate:
         self.__state.regs.r14 = self.__state.se.BVS("r14", 64)
         self.__state.regs.r15 = self.__state.se.BVS("r15", 64)
 
-
         # remember the initial symbolic variables for the registers
-        self.__inireg = { r : self.__getreg(r) for r in HARDWARE_REGISTERS }
+        self.__inireg = {r: self.__getreg(r) for r in HARDWARE_REGISTERS}
 
+        # initialize SPL variables
+        self.__plsz = 0  # our pool size
+        self.__inivar_rel = {}  # values in the relative-form
 
-        # initialize SPL variables        
-        self.__init_vars( varmap )  # this can trhow an exception
-      
+        # An alternative way to enable/disable hooks is this:
+        self.__disable_hooks = False  # enable breakpoints
 
-        self.__disable_hooks = False                # enable breakpoints 
-       
-        self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook )
-        self.__state.inspect.b('mem_read',  when=angr.BP_BEFORE, action=self.__dbg_read_hook  )  
+        self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook)
+        self.__state.inspect.b('mem_read', when=angr.BP_BEFORE, action=self.__dbg_read_hook)
         self.__state.inspect.b('reg_write', when=angr.BP_BEFORE, action=self.__dbg_reg_wr_hook)
-        self.__state.inspect.b('symbolic_variable', 
-                                            when=angr.BP_AFTER,  action=self.__dbg_symv_hook  )
-        self.__state.inspect.b('call',      when=angr.BP_AFTER, action=self.__dbg_call_hook   )
-        
+        self.__state.inspect.b('symbolic_variable',
+                               when=angr.BP_AFTER, action=self.__dbg_symv_hook)
+        self.__state.inspect.b('call', when=angr.BP_AFTER, action=self.__dbg_call_hook)
 
+        self.__origst = self.__state.copy()  # create a copy of the original state
 
-        self.__origst = self.__state.copy()         # create a copy of the original state
+        # deep copy
+        self.imm = self.__imm
+        self.sym = self.__sym
+        self.inireg = self.__inireg
+        self.reg = self.__reg
+        self.mem = self.__mem
+        self.ext = self.__ext
+        self.relative = self.__relative
+        self.imm_regs = self.__imm_regs
+        self.alloc_size = self.__alloc_size
+        self.state = self.__state
+        self.disable_hooks = self.__disable_hooks = False  # enable breakpoints
 
-
-        # deep copy 
-        self.imm           = self.__imm
-        self.sym           = self.__sym
-        self.inireg        = self.__inireg
-        self.reg           = self.__reg
-        self.mem           = self.__mem
-        self.ext           = self.__ext
-        self.relative      = self.__relative
-        self.imm_regs      = self.__imm_regs
-        self.alloc_size    = self.__alloc_size
-        self.state         = self.__state        
-        self.disable_hooks = self.__disable_hooks = False                # enable breakpoints         
-
-
-        self.project    = project
-        self.cfg        = cfg
-        self.clobbering = clobbering
-        self.adj        = adj
-        self.IR         = IR
-        self.varmap     = varmap
-        self.rsvp       = rsvp
-        self.entry      = entry
-
+        self.project = project
 
 
     # ---------------------------------------------------------------------------------------------
@@ -1213,7 +916,7 @@ class simulate:
     #
     # <Bool (0#32 .. (mem_d8003100_481_64[31:0] & 0xf8000000)) != 0x30000000>]
     #
-    def __check_regsets( self, state=None ):
+    def __check_regsets(self, state=None):
         if not state:
             state = self.__state
 
@@ -1221,26 +924,24 @@ class simulate:
         for reg, val in self.unchecked_regsets:
             if not isinstance(val, tuple):
 
-                if state.se.eval( self.__getreg(reg, state) ) != val:
-                    
-                    warn('Wrong concretized value! Fixing it.... %x != %x' %                        
-                            (state.se.eval( self.__getreg(reg, state) ), val))
+                if state.se.eval(self.__getreg(reg, state)) != val:
+
+                    warn('Wrong concretized value! Fixing it.... %x != %x' %
+                         (state.se.eval(self.__getreg(reg, state)), val))
 
                     state.add_constraints(self.__getreg(reg, state) == val)
 
                     if not state.satisfiable():
                         dbg_prnt(DBG_LVL_2, "Reservation constraint was un-satisfiable. Rolling back...")
 
-                        self.unchecked_regsets = [] # all registers are checked!
-                        return False                # check failed
+                        self.unchecked_regsets = []  # all registers are checked!
+                        return False  # check failed
 
 
-        self.unchecked_regsets = []                 # all registers are checked!
+        self.unchecked_regsets = []  # all registers are checked!
 
         return True
 
-
-    
     # ---------------------------------------------------------------------------------------------
     # simulate_edge(): This function is invoked for every edge in the induced subgraph Hk and it
     #       performs a symbolic execution from one accepted block to another. Essentially, its
@@ -1249,7 +950,7 @@ class simulate:
     #
     #       Unfortunately, the symbolic execution engine, may take forever to move from the one
     #       accepted block to the other To address this issue, we "guide" the symbolic execution,
-    #       by selecting the exact subpath that will follow. This path however, is just an 
+    #       by selecting the exact subpath that will follow. This path however, is just an
     #       estimation so it may not be correct. Therefore, simulate_edge() quickly generates
     #       candidate subpaths, starting from the shortest one.
     #
@@ -1264,47 +965,20 @@ class simulate:
     # :Ret: If function can extend the path, it returns the basic block path. Otherwise, it returns
     #   None.
     #
-    def simulate_edge( self, currb, nextb, uid, loopback=False ):
+    def simulate_edge(self, currb, nextb, uid, loopback=False):
         dbg_prnt(DBG_LVL_2, "Simulating edge (0x%x, 0x%x) for UID = %d" % (currb, nextb, uid))
 
 
-        # indicate the boundaries
-
         # Check if current basic block matches with the address of the current state
-        if currb != self.__state.addr:              # base check            
-            raise Exception('Illegal transition from current state ' 
-                        '(starts from 0x%x, but state is at 0x%x)' % (currb, self.__state.addr))
+        if currb != self.__state.addr:  # base check
+            raise Exception('Illegal transition from current state '
+                            '(starts from 0x%x, but state is at 0x%x)' % (currb, self.__state.addr))
 
-        if loopback and currb != nextb:             # base check
+        if loopback and currb != nextb:  # base check
             raise Exception('Loopback mode on distinct blocks')
 
 
         self.__disable_hooks = True
-        
-        for var in self.FOO:
-            # print ' var', str(var)
-            if var.shallow_repr() in SYM2ADDR:
-                addr, size = SYM2ADDR[var.shallow_repr()]
-
-                MEM = self.__mread(self.__state, SYM2ADDR[var.shallow_repr()][0], 
-                                                 SYM2ADDR[var.shallow_repr()][1])
-
-                if "mem_" not in MEM.shallow_repr():
-                    self.__init_mem(self.__state, addr, size)
-        
-                    MEM = self.__mread(self.__state, SYM2ADDR[var.shallow_repr()][0], 
-                                                     SYM2ADDR[var.shallow_repr()][1])
-
-
-
-                if len(var) != len(MEM):                                    
-                    error('Symbolic variable alias found but size is inconsistent. Discard current path...')                    
-
-                # if it's already a concreate value don't add a constraint
-                else:
-                    # print 'ADD CONSTRAINT FOO', var, MEM
-                    self.__state.add_constraints(var == MEM)
-
 
 
         # ---------------------------------------------------------------------
@@ -1312,73 +986,69 @@ class simulate:
         # ---------------------------------------------------------------------
         if loopback:
             dbg_prnt(DBG_LVL_2, "Simluation a loop, starting from 0x%x ..." % self.__state.addr)
-            
+
             # guide the symbolic execution: generate P shortest loops
             for length, loop in self.__cfg_sp.k_shortest_loops(currb, uid, PARAMETER_P):
 
-                if length > MAX_ALLOWED_SUBPATH_LEN:    # if loop is too long, discard it
-                    # This won't happen as the same check happens inside path.py, but we 
-                    # should keep modules independent 
+                if length > MAX_ALLOWED_SUBPATH_LEN:  # if loop is too long, discard it
+                    # This won't happen as the same check happens inside path.py, but we
+                    # should keep modules independent
 
                     dbg_prnt(DBG_LVL_3, "Loop is too big (%d). Discard current path ..." % length)
                     break
-            
 
-                mode = [SIM_MODE_FUNCTIONAL] + [SIM_MODE_DISPATCH]*(len(loop)-2) + [SIM_MODE_FUNCTIONAL]
+                mode = [SIM_MODE_FUNCTIONAL] + [SIM_MODE_DISPATCH] * (len(loop) - 2) + [SIM_MODE_FUNCTIONAL]
 
                 # if we need to simulate loop multiple times, we unroll current loop by a constant
                 # factor
                 if SIMULATED_LOOP_ITERATIONS > 2:
-                    loop = loop[:-1]*(SIMULATED_LOOP_ITERATIONS-1)
-                    mode = mode[:-1]*(SIMULATED_LOOP_ITERATIONS-1)
+                    loop = loop[:-1] * (SIMULATED_LOOP_ITERATIONS - 1)
+                    mode = mode[:-1] * (SIMULATED_LOOP_ITERATIONS - 1)
 
-                # warn('LOOP IS %s' % pretty_list(loop))
 
                 # do the actual symbolic execution and verify that loop is correct
                 nextst = self.__simulate_subpath(length, loop, mode)
 
-                if nextst != None:                      # success!
+                if nextst != None:  # success!
                     emph("Edge successfully simulated.", DBG_LVL_2)
 
-                    del self.__state                    # we don't need current state
-                    self.__state = nextst               # update state
+                    del self.__state  # we don't need current state
+                    self.__state = nextst  # update state
 
-                    return loop                         # return subpath
-            
+                    return loop  # return subpath
+
 
         # ---------------------------------------------------------------------
         # Path mode
-        # ---------------------------------------------------------------------                    
+        # ---------------------------------------------------------------------
         else:
             # guide the symbolic execution: generate P shortest paths
             for slen, subpath in self.__cfg_sp.k_shortest_paths(currb, nextb, uid, PARAMETER_P):
 
-                if slen > MAX_ALLOWED_SUBPATH_LEN:      # if subpath is too long, discard it
+                if slen > MAX_ALLOWED_SUBPATH_LEN:  # if subpath is too long, discard it
                     break
 
-
-                mode = [SIM_MODE_FUNCTIONAL] + [SIM_MODE_DISPATCH]*(len(subpath)-1)
+                mode = [SIM_MODE_FUNCTIONAL] + [SIM_MODE_DISPATCH] * (len(subpath) - 1)
 
                 # do the actual symbolic execution and verify if subpath is correct
                 nextst = self.__simulate_subpath(slen, subpath, mode)
 
-                if nextst != None:                      # success!
+                if nextst != None:  # success!
                     dbg_prnt(DBG_LVL_2, "Edge successfully simulated.")
 
                     if slen > 0:
                         self.__check_regsets(nextst)
 
+                    del self.__state  # we don't need current state
+                    self.__state = nextst  # update state
 
-                    del self.__state                    # we don't need current state
-                    self.__state = nextst               # update state
-            
-                    return subpath                      # return subpath
+                    return subpath  # return subpath
 
 
         # we cannot simulate this edge. Try another induced subgraph
         dbg_prnt(DBG_LVL_2, "Cannot simulate egde. Discarding current induced subgraph...")
-        
-        return None                             # no subpath to return
+
+        return None  # no subpath to return
 
 
 
@@ -1388,15 +1058,14 @@ class simulate:
     # :Arg stmty: The type of the last statement
     # :Ret: None.
     #
-    def step( self, stmt ):
+    def step(self, stmt):
         dbg_prnt(DBG_LVL_2, "Moving one step forward from 0x%x ..." % self.__state.addr)
-
 
         # create hte simulation manager object
         simgr = self.__proj.factory.simulation_manager(thing=self.__state)
-    
 
-        self.__disable_hooks = False                # enable hooks to capture reads/writes
+
+        self.__disable_hooks = False  # enable hooks to capture reads/writes
 
         # this should throw no exception (it was already successful in absblk.py)
         if stmt['type'] == 'call':
@@ -1404,8 +1073,7 @@ class simulate:
         else:
             # step is in functional mode ;)
             self.__sim_mode = SIM_MODE_FUNCTIONAL
-        try: 
-
+        try:
 
             try:
                 node = ADDR2NODE[self.__state.addr]
@@ -1418,46 +1086,41 @@ class simulate:
                 simgr.step(num_inst=num_inst)
             else:
                 simgr.step()
-                
 
-        except Exception, msg:                   
+
+        except Exception, msg:
             dbg_prnt(DBG_LVL_3, "Step failed. Exception raised: '%s'" % bolds(str(msg)))
             return -1
 
-        except angr.errors.SimUnsatError:   # un-satisfiable constraints
-            dbg_prnt(DBG_LVL_2, "Step constraints were un-satisfiable. Discard current path.")            
+        except angr.errors.SimUnsatError:  # un-satisfiable constraints
+            dbg_prnt(DBG_LVL_2, "Step constraints were un-satisfiable. Discard current path.")
             return -1
-
 
         dbg_prnt(DBG_LVL_2, "Step simulated successfully.")
 
         if not simgr.active:
             print 'Stashes', simgr.stashes
-            
-            dbg_prnt(DBG_LVL_3, "Stop failed (No 'active' stashes)")            
+
+            dbg_prnt(DBG_LVL_3, "Stop failed (No 'active' stashes)")
 
             # We may endup in deadended state if the last block is a retn
             return [0xdeadbeef]
-            # return -1
 
 
-        self.__disable_hooks = True                 # disable hooks again
-        
+        self.__disable_hooks = True  # disable hooks again
 
         # pick the state (if > 1) with satisfiable constraints
         for state in simgr.active:
-            dbg_prnt(DBG_LVL_3, "Checking constraints from state: 0x%x" % state.addr)            
+            dbg_prnt(DBG_LVL_3, "Checking constraints from state: 0x%x" % state.addr)
 
             state_copy = state.copy()
             unchecked = self.unchecked_regsets[:]
 
             if self.__check_regsets(state_copy):
-    
                 self.__state = state_copy
 
                 dbg_prnt(DBG_LVL_2, "Done.")
                 dbg_arb(DBG_LVL_3, "Constraints: ", self.__state.se.constraints)
-
 
                 return [state.addr for state in simgr.active]
 
@@ -1467,6 +1130,7 @@ class simulate:
         return -1
 
 
+
     # ---------------------------------------------------------------------------------------------
     # clone(): This function clones the current simulation object, once it reaches a conditional
     #       basic block. TODO: elaborate
@@ -1474,76 +1138,83 @@ class simulate:
     # :Arg condreg: The register that is used in the condition (must be symbolic)
     # :Ret: An identical hardcopy of the current object.
     #
-    def clone( self, condreg ):
-        
+    def clone(self, condreg):
+
         dbg_prnt(DBG_LVL_1, "Cloning current state at 0x%x ..." % self.__state.addr)
 
         print 'RBX', self.__state.regs.rbx, self.__inireg['rbx'], self.__getreg('rbx')
-        
 
         # TODO: That's a bad way to do it. Nevermind it works.
-        if   condreg == 'rax': self.__state.regs.rax = self.__state.se.BVS("cond_rax", 64)                                
-        elif condreg == 'rbx': self.__state.regs.rbx = self.__state.se.BVS("cond_rbx", 64)
-        elif condreg == 'rcx': self.__state.regs.rcx = self.__state.se.BVS("cond_rcx", 64)
-        elif condreg == 'rdx': self.__state.regs.rdx = self.__state.se.BVS("cond_rdx", 64)
-        elif condreg == 'rsi': self.__state.regs.rsi = self.__state.se.BVS("cond_rsi", 64)
-        elif condreg == 'rdi': self.__state.regs.rdi = self.__state.se.BVS("cond_rdi", 64)
-        elif condreg == 'rbp': self.__state.regs.rbp = self.__state.se.BVS("cond_rbp", 64)
-        elif condreg == 'r8':  self.__state.regs.r8  = self.__state.se.BVS("cond_r08", 64)
-        elif condreg == 'r9':  self.__state.regs.r9  = self.__state.se.BVS("cond_r09", 64)
-        elif condreg == 'r10': self.__state.regs.r10 = self.__state.se.BVS("cond_r10", 64)
-        elif condreg == 'r11': self.__state.regs.r11 = self.__state.se.BVS("cond_r11", 64)
-        elif condreg == 'r12': self.__state.regs.r12 = self.__state.se.BVS("cond_r12", 64)
-        elif condreg == 'r13': self.__state.regs.r13 = self.__state.se.BVS("cond_r13", 64)
-        elif condreg == 'r14': self.__state.regs.r14 = self.__state.se.BVS("cond_r14", 64)
-        elif condreg == 'r15': self.__state.regs.r15 = self.__state.se.BVS("cond_r15", 64)
+        if condreg == 'rax':
+            self.__state.regs.rax = self.__state.se.BVS("cond_rax", 64)
+        elif condreg == 'rbx':
+            self.__state.regs.rbx = self.__state.se.BVS("cond_rbx", 64)
+        elif condreg == 'rcx':
+            self.__state.regs.rcx = self.__state.se.BVS("cond_rcx", 64)
+        elif condreg == 'rdx':
+            self.__state.regs.rdx = self.__state.se.BVS("cond_rdx", 64)
+        elif condreg == 'rsi':
+            self.__state.regs.rsi = self.__state.se.BVS("cond_rsi", 64)
+        elif condreg == 'rdi':
+            self.__state.regs.rdi = self.__state.se.BVS("cond_rdi", 64)
+        elif condreg == 'rbp':
+            self.__state.regs.rbp = self.__state.se.BVS("cond_rbp", 64)
+        elif condreg == 'r8':
+            self.__state.regs.r8 = self.__state.se.BVS("cond_r08", 64)
+        elif condreg == 'r9':
+            self.__state.regs.r9 = self.__state.se.BVS("cond_r09", 64)
+        elif condreg == 'r10':
+            self.__state.regs.r10 = self.__state.se.BVS("cond_r10", 64)
+        elif condreg == 'r11':
+            self.__state.regs.r11 = self.__state.se.BVS("cond_r11", 64)
+        elif condreg == 'r12':
+            self.__state.regs.r12 = self.__state.se.BVS("cond_r12", 64)
+        elif condreg == 'r13':
+            self.__state.regs.r13 = self.__state.se.BVS("cond_r13", 64)
+        elif condreg == 'r14':
+            self.__state.regs.r14 = self.__state.se.BVS("cond_r14", 64)
+        elif condreg == 'r15':
+            self.__state.regs.r15 = self.__state.se.BVS("cond_r15", 64)
 
         self.condreg = condreg
-        # self.__inireg[ condreg ] = self.__state.regs.rbx
 
-
-        state_copy = self.__state.copy()                        
+        state_copy = self.__state.copy()
 
         # create hte simulation manager object
         simgr = self.__proj.factory.simulation_manager(thing=state_copy)
-  
+
         print 'Stashes', simgr.stashes
         print 'Constraints', self.__state.se.constraints
 
-        
         # this should throw no exception (it was already successful in absblk.py)
         simgr.step()
 
         print 'Stashes', simgr.stashes
 
-
         # we should have exactly 2 active stashes
         print simgr.active[0].se.constraints
         print simgr.active[1].se.constraints
 
-        if len(simgr.active) != 2:              
+        if len(simgr.active) != 2:
             print simgr.active
             raise Exception('Conditional jump state should have 2 active stashes')
-       
 
         dbg_prnt(DBG_LVL_2, "Done.")
-        
-        self.entry = self.__state.addr
-        newsim = simulate(self.project, self.cfg, self.clobbering, self.adj, self.IR,
-                                        self.varmap, self.rsvp, self.entry)
-       
-        newsim.imm           = copy.deepcopy(self.__imm)
-        newsim.sym           = copy.deepcopy(self.__sym)
-        newsim.inireg        = copy.deepcopy(self.__inireg)
-        newsim.reg           = copy.deepcopy(self.__reg)
-        newsim.mem           = copy.deepcopy(self.__mem)
-        newsim.ext           = copy.deepcopy(self.__ext)
-        newsim.relative      = copy.deepcopy(self.__relative)
-        newsim.imm_regs      = copy.deepcopy(self.__imm_regs)
-        newsim.FOO           = copy.deepcopy(self.FOO)
-        newsim.alloc_size    = copy.deepcopy(self.__alloc_size)
-        newsim.state         = self.__state.copy() #copy.deepcopy(self.__state)
-        newsim.inireg        = copy.deepcopy(self.__inireg)
+
+
+        newsim = simulate(self.project, self.__cfg_sp, self.__state.addr)
+
+        newsim.imm = copy.deepcopy(self.__imm)
+        newsim.sym = copy.deepcopy(self.__sym)
+        newsim.inireg = copy.deepcopy(self.__inireg)
+        newsim.reg = copy.deepcopy(self.__reg)
+        newsim.mem = copy.deepcopy(self.__mem)
+        newsim.ext = copy.deepcopy(self.__ext)
+        newsim.relative = copy.deepcopy(self.__relative)
+        newsim.imm_regs = copy.deepcopy(self.__imm_regs)
+        newsim.alloc_size = copy.deepcopy(self.__alloc_size)
+        newsim.state = self.__state.copy()  # copy.deepcopy(self.__state)
+        newsim.inireg = copy.deepcopy(self.__inireg)
         newsim.disable_hooks = copy.deepcopy(self.__disable_hooks)
         newsim.unchecked_regsets = copy.deepcopy(self.unchecked_regsets)
 
@@ -1551,115 +1222,101 @@ class simulate:
 
         print 'Constraints', self.__state.se.constraints
 
-    
-        self.__state.add_constraints( simgr.active[1].se.constraints[-1] )
-        newsim.state.add_constraints( simgr.active[0].se.constraints[-1] )
+        self.__state.add_constraints(simgr.active[1].se.constraints[-1])
+        newsim.state.add_constraints(simgr.active[0].se.constraints[-1])
 
         del state_copy
-        
+
         return newsim
 
-    
 
     # ---------------------------------------------------------------------------------------------
     # stash_context(): Save current context to a stash.
     #
     # :Ret: None.
     #
-    def copy_locally( self ):       
-        self.__imm           = self.imm
-        self.__sym           = self.sym
-        self.__inireg        = self.inireg
-        self.__reg           = self.reg
-        self.__mem           = self.mem
-        self.__ext           = self.ext
-        self.__relative      = self.relative
-        self.__imm_regs      = self.imm_regs
-        # self.FOO             = self.FOO
-        self.__alloc_size    = self.alloc_size
-        self.__state         = self.state
+    def copy_locally(self):
+        self.__imm = self.imm
+        self.__sym = self.sym
+        self.__inireg = self.inireg
+        self.__reg = self.reg
+        self.__mem = self.mem
+        self.__ext = self.ext
+        self.__relative = self.relative
+        self.__imm_regs = self.imm_regs
+        self.__alloc_size = self.alloc_size
+        self.__state = self.state
         self.__disable_hooks = self.disable_hooks
 
-        
         # state will have action to the parent object. We have to readjust them?
-        self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook )
-        self.__state.inspect.b('mem_read',  when=angr.BP_BEFORE, action=self.__dbg_read_hook  )
+        self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook)
+        self.__state.inspect.b('mem_read', when=angr.BP_BEFORE, action=self.__dbg_read_hook)
         self.__state.inspect.b('reg_write', when=angr.BP_BEFORE, action=self.__dbg_reg_wr_hook)
         self.__state.inspect.b('symbolic_variable',
-                                            when=angr.BP_AFTER,  action=self.__dbg_symv_hook  )
-        self.__state.inspect.b('call',      when=angr.BP_AFTER, action=self.__dbg_call_hook   )
-  
-
+                               when=angr.BP_AFTER, action=self.__dbg_symv_hook)
+        self.__state.inspect.b('call', when=angr.BP_AFTER, action=self.__dbg_call_hook)
 
     # ---------------------------------------------------------------------------------------------
     # stash_context(): Save current context to a stash.
     #
     # :Ret: None.
     #
-    def update_globals( self ):       
-        self.imm           = self.__imm
-        self.sym           = self.__sym
-        self.inireg        = self.__inireg
-        self.reg           = self.__reg
-        self.mem           = self.__mem
-        self.ext           = self.__ext
-        self.relative      = self.__relative
-        self.imm_regs      = self.__imm_regs
-        self.alloc_size    = self.__alloc_size
-        self.state         = self.__state
+    def update_globals(self):
+        self.imm = self.__imm
+        self.sym = self.__sym
+        self.inireg = self.__inireg
+        self.reg = self.__reg
+        self.mem = self.__mem
+        self.ext = self.__ext
+        self.relative = self.__relative
+        self.imm_regs = self.__imm_regs
+        self.alloc_size = self.__alloc_size
+        self.state = self.__state
         self.disable_hooks = self.__disable_hooks
-          
-        
 
     # ---------------------------------------------------------------------------------------------
     # stash_context(): Save current context to a stash.
     #
     # :Ret: None.
-    def stash_context( self ):
-        self.__stash_imm           = copy.deepcopy(self.__imm)
-        self.__stash_sym           = copy.deepcopy(self.__sym)
-        self.__stash_inireg        = copy.deepcopy(self.__inireg)
-        self.__stash_reg           = copy.deepcopy(self.__reg)
-        self.__stash_mem           = copy.deepcopy(self.__mem)
-        self.__stash_ext           = copy.deepcopy(self.__ext)
-        self.__stash_relative      = copy.deepcopy(self.__relative)
-        self.__stash_imm_regs      = copy.deepcopy(self.__imm_regs)
-        self.__stash_FOO           = copy.deepcopy(self.FOO)
-        self.__stash_alloc_size    = copy.deepcopy(self.__alloc_size)
-        self.__stash_state         = self.__state.copy() #copy.deepcopy(self.__state)
+    #      self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook )
+    def stash_context(self):
+        self.__stash_sym = copy.deepcopy(self.__sym)
+        self.__stash_inireg = copy.deepcopy(self.__inireg)
+        self.__stash_reg = copy.deepcopy(self.__reg)
+        self.__stash_mem = copy.deepcopy(self.__mem)
+        self.__stash_ext = copy.deepcopy(self.__ext)
+        self.__stash_relative = copy.deepcopy(self.__relative)
+        self.__stash_imm_regs = copy.deepcopy(self.__imm_regs)
+        self.__stash_alloc_size = copy.deepcopy(self.__alloc_size)
+        self.__stash_state = self.__state.copy()  # copy.deepcopy(self.__state)
         self.__stash_disable_hooks = copy.deepcopy(self.__disable_hooks)
         self.__stash_unchecked_regsets = copy.deepcopy(self.unchecked_regsets)
-
-
 
     # ---------------------------------------------------------------------------------------------
     # drop_context_stash(): Drop context stash.
     #
     # :Ret: None.
     #
-    def drop_context_stash( self ):       
-        del self.__stash_imm
-        del self.__stash_sym 
+    def drop_context_stash(self):
+        del self.__stash_sym
         del self.__stash_inireg
         del self.__stash_reg
         del self.__stash_mem
-        del self.__stash_ext 
+        del self.__stash_ext
         del self.__stash_relative
         del self.__stash_imm_regs
-        del self.__stash_FOO
         del self.__stash_alloc_size
-        del self.__stash_state 
+        del self.__stash_state
         del self.__stash_disable_hooks
-        del self.__stash_unchecked_regsets 
+        del self.__stash_unchecked_regsets
 
+        # ---------------------------------------------------------------------------------------------
 
-
-    # ---------------------------------------------------------------------------------------------
     # unstash_context(): Remove a context from stash and use it.
     #
     # :Ret: None.
     #
-    def unstash_context( self ):       
+    def unstash_context(self):
         del self.__imm
         del self.__sym
         del self.__inireg
@@ -1668,33 +1325,19 @@ class simulate:
         del self.__ext
         del self.__relative
         del self.__imm_regs
-        del self.FOO
         del self.__alloc_size
         del self.__state
         del self.__disable_hooks
         del self.unchecked_regsets
 
-        self.__imm           = self.__stash_imm
-        self.__sym           = self.__stash_sym 
-        self.__inireg        = self.__stash_inireg
-        self.__reg           = self.__stash_reg
-        self.__mem           = self.__stash_mem
-        self.__ext           = self.__stash_ext 
-        self.__relative      = self.__stash_relative
-        self.__imm_regs      = self.__stash_imm_regs
-        self.FOO             = self.__stash_FOO
-        self.__alloc_size    = self.__stash_alloc_size
-        self.__state         = self.__stash_state 
+        self.__sym = self.__stash_sym
+        self.__inireg = self.__stash_inireg
+        self.__reg = self.__stash_reg
+        self.__mem = self.__stash_mem
+        self.__ext = self.__stash_ext
+        self.__relative = self.__stash_relative
+        self.__imm_regs = self.__stash_imm_regs
+        self.__alloc_size = self.__stash_alloc_size
+        self.__state = self.__stash_state
         self.__disable_hooks = self.__stash_disable_hooks
         self.unchecked_regsets = self.__stash_unchecked_regsets
-
-
-
-    # ---------------------------------------------------------------------------------------------
-    # constraints(): Get constraints.
-    #
-    # :Ret: None.
-    #
-    def constraints( self ):
-        return self.__state.se.constraints
-

@@ -254,7 +254,6 @@ class search:
     def __enum_tree( self, tree, simulation, path=[], prev_uid=-1, totpath=set()  ):
 
         print 'TREE', tree
-        #return 0
 
 
         # ---------------------------------------------------------------------
@@ -296,13 +295,7 @@ class search:
         elif isinstance(tree[0], tuple):
             uid, currb, nextb = tree[0]
             
-            # TODO: If Hk is disconnected (due to dummy gotos) then
-            # a new state needs to be initialized
-            #
-            # or we can simply discard the state....
-            #
-            # So, in case of a gap, just throw an exception
- 
+
             print uid, self.__IR[uid], tree[0], self.__adj
             print 'PATH', path, [p[2] for p in path] #, self.__adj[ uid ][0]
 
@@ -357,7 +350,6 @@ class search:
             try:
                 # create the simulation object
                 simulation_2 = simulation.clone(condreg)
-                pass  
             except Exception:
                 dbg_prnt(DBG_LVL_2, "Cannot create simulation object 2. Discard current Hk")
                 return -1
@@ -532,11 +524,10 @@ class search:
 
                 entry = self.__entry            # use the regular entry point
 
-
+                __cfg_sp = P._cfg_shortest_path(self.__cfg, cloblks, adj)
                 try:
                     # create the simulation object
-                    simulation = S.simulate(self.__proj, self.__cfg, cloblks, adj, self.__IR,
-                                            varmap, rsvp, entry)
+                    simulation = S.simulate(self.__proj, __cfg_sp, entry)
                 except Exception, e:
                     dbg_prnt(DBG_LVL_2, "Cannot create simulation object. Discard current Hk")
                     continue

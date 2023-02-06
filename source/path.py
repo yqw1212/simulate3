@@ -994,8 +994,6 @@ class _cfg_shortest_path( _cs_ksp_intrl ):
                                             (n.addr, root.addr))
         
                 while p > 0:                        # go all the way up to the root                        
-                    dbg_prnt(DBG_LVL_4, "\t\t%3d 0x%x (%s)" % (self.__dist.get(p, -1), p.addr, p.name))                 
-
 
                     path.insert(0, int(p.addr) )    # add node to the path (in reverse order)
 
@@ -1194,49 +1192,6 @@ class _cfg_shortest_path( _cs_ksp_intrl ):
             expath += edge_data.get('path', []) + [v]
             expaths.append(expath[:])
 
-
-        # The expanded path should have as many nodes as the total length
-        #
-        # However this is not always true, because the expanded path may not be so "expanded"
-        # The only problem with that, is that we my return the same path >1 times
-        #
-        #       if spurlen != len(expath) - 1:
-        #           fatal("Something is wrong with 'expath' in __spur_shortest_path()")
-
-
-        # The last element of pathlens list is the total path length
-        if length != pathlens[-1]:          
-            # This may occur, when we have an unresolvable function (eval/sudo/sudo):
-            #
-            #       .text:000000000040F5A5         test    rbp, rbp
-            #       .text:000000000040F5A8         jz      short loc_40F5C6
-            #       .text:000000000040F5AA         xor     ebx, ebx
-            #       .text:000000000040F5AC         nop     dword ptr [rax+00h]
-            #       .text:000000000040F5B0
-            #       .text:000000000040F5B0 loc_40F5B0:
-            #       .text:000000000040F5B0         mov     rdx, r15
-            #       .text:000000000040F5B3         mov     rsi, r14
-            #       .text:000000000040F5B6         mov     edi, r13d
-            #       .text:000000000040F5B9         call    qword ptr [r12+rbx*8]
-            #       .text:000000000040F5BD         add     rbx, 1
-            #       .text:000000000040F5C1         cmp     rbx, rbp
-            #       .text:000000000040F5C4         jnz     short loc_40F5B0
-            #       .text:000000000040F5C6
-            #       .text:000000000040F5C6 loc_40F5C6:
-            #       .text:000000000040F5C6         mov     rbx, [rsp+38h+var_30]
-            #       .text:000000000040F5CB         mov     rbp, [rsp+38h+var_28]
-            #       .text:000000000040F5D0         mov     r12, [rsp+38h+var_20]
-            #       .text:000000000040F5D5         mov     r13, [rsp+38h+var_18]
-            #       .text:000000000040F5DA         mov     r14, [rsp+38h+var_10]
-            #       .text:000000000040F5DF         mov     r15, [rsp+38h+var_8]
-            #       .text:000000000040F5E4         add     rsp, 38h
-            #       .text:000000000040F5E8         retn
-            #
-            # Here, "call qword ptr [r12+rbx*8]" does not really go anywhere, however the distance
-            # from 0x40F5B0 to 0x40F5BD is 2. This happens when we visit a function with length <1.
-            #
-            #       fatal("Something is wrong with 'pathlens' in __spur_shortest_path()")
-            pass
 
         return (path, pathlens, expaths)            # return spur path
 
@@ -1442,10 +1397,5 @@ if __name__ == '__main__':                          # DEBUG ONLY
 
 
 '''
-
-# TODO: FIX MEEEEE!!!!!!!!!!!!!
-# BAD LOOP (mod: 0, set: 2) 40b277 - 40b28f - 402a40 - 10003c0 - 40b299 - 40b2b6 - 
-#                           40b2e5 - 40b2eb - 402a80 - 10003e0 - 40b277
-
 
 # -------------------------------------------------------------------------------------------------
