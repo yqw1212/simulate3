@@ -38,7 +38,6 @@ from coreutils import *
 import angr
 import archinfo
 import copy
-import time
 
 # ------------------------------------------------------------------------------------------------
 # Constant Definitions
@@ -1280,6 +1279,7 @@ class simulate:
     # :Ret: None.
     #      self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook )
     def stash_context(self):
+        self.__stash_imm = copy.deepcopy(self.__imm)
         self.__stash_sym = copy.deepcopy(self.__sym)
         self.__stash_inireg = copy.deepcopy(self.__inireg)
         self.__stash_reg = copy.deepcopy(self.__reg)
@@ -1298,6 +1298,7 @@ class simulate:
     # :Ret: None.
     #
     def drop_context_stash(self):
+        del self.__stash_imm
         del self.__stash_sym
         del self.__stash_inireg
         del self.__stash_reg
@@ -1330,6 +1331,7 @@ class simulate:
         del self.__disable_hooks
         del self.unchecked_regsets
 
+        self.__imm = self.__stash_imm
         self.__sym = self.__stash_sym
         self.__inireg = self.__stash_inireg
         self.__reg = self.__stash_reg
