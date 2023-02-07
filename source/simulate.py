@@ -1,38 +1,7 @@
 #!/usr/bin/env python2
-# -------------------------------------------------------------------------------------------------
-#
-#    ,ggggggggggg,     _,gggggg,_      ,ggggggggggg,      ,gggg,
-#   dP"""88""""""Y8, ,d8P""d8P"Y8b,   dP"""88""""""Y8,  ,88"""Y8b,
-#   Yb,  88      `8b,d8'   Y8   "8b,dPYb,  88      `8b d8"     `Y8
-#    `"  88      ,8Pd8'    `Ybaaad88P' `"  88      ,8Pd8'   8b  d8
-#        88aaaad8P" 8P       `""""Y8       88aaaad8P",8I    "Y88P'
-#        88""""Y8ba 8b            d8       88"""""   I8'
-#        88      `8bY8,          ,8P       88        d8
-#        88      ,8P`Y8,        ,8P'       88        Y8,
-#        88_____,d8' `Y8b,,__,,d8P'        88        `Yba,,_____,
-#       88888888P"     `"Y8888P"'          88          `"Y8888888
-#
-#   The Block Oriented Programming (BOP) Compiler - v2.1
-#
-#
-# Kyriakos Ispoglou (ispo) - ispo@purdue.edu
-# PURDUE University, Fall 2016-18
-# -------------------------------------------------------------------------------------------------
-#
-#
-# simulate.py:
-#
 # This module performs the concolic execution. That is it verifies a solution proposed by search
 # module. For more details please refer to the paper.
-#
-#
-# * * * ---===== TODO list =====--- * * *
-#
-#   [1]. Consider overlapping cases. For instance, when we write e.g., 8 bytes at address X and
-#        then we write 4 bytes at address X+1, we may have issues
-#
-#
-# -------------------------------------------------------------------------------------------------
+
 from coreutils import *
 
 import angr
@@ -61,7 +30,6 @@ SIM_MODE_INVALID = 0xffff  # invalid simulation mode
 SIM_MODE_FUNCTIONAL = 0x0001  # simulation mode: Functional
 SIM_MODE_DISPATCH = 0x0000  # simulation mode: Dispath
 
-MAX_BOUND = 0x4000
 
 # addresses that are not recognized as R/W but they are
 _whitelist_ = [
@@ -208,7 +176,6 @@ class simulate:
         if not state:  # if no state is given, use the current one
             state = self.__state
 
-
         # special cases first
         if addr < 0x10000:
             return ''
@@ -216,7 +183,6 @@ class simulate:
         elif ALLOCATOR_BASE_ADDR <= addr and addr <= ALLOCATOR_CEIL_ADDR:
             return 'RW'
 
-            # TOOD:!!! 0x10000
         elif POOLVAR_BASE_ADDR <= addr and addr <= POOLVAR_BASE_ADDR + self.__plsz + 0x1000:
             return 'RW'
 
@@ -348,7 +314,6 @@ class simulate:
         bss = self.__proj.loader.main_object.sections_map[".bss"]
         data = self.__proj.loader.main_object.sections_map[".data"]
 
-        # print 'INIT MEMORY', hex(addr), self.__mread(state, addr, length)
 
         # if the memory cell is empty (None) or if the cell is initialized with a
         # default value, then we should give it a symbolic variable. You can also use:
@@ -388,7 +353,6 @@ class simulate:
     # __dbg_read_hook(): This callback function is invoked when a memory "area" is being read.
     #
     # :Arg state: Current state of the symbolic execution
-    # :Ret: None.
     #
     def __dbg_read_hook(self, state):
         if self.__disable_hooks:  # if hooks are disabled, abort
@@ -427,7 +391,6 @@ class simulate:
                  (insn_addr, addr, self.__mread(state, addr, size), size), pre='[R] ')
 
         # make sure that the address that you read from has +R permissions
-        # TODO: fs:0x28 (canary hits an error here) 0x2010028
         if 'R' not in self.__get_permissions(addr, state) and addr not in _whitelist_:
             raise Exception("Attempted to read from an non-readable address '0x%x'" % addr)
 
@@ -471,18 +434,7 @@ class simulate:
         if 'W' not in self.__get_permissions(addr, state) and addr not in _whitelist_:
             raise Exception("Attempted to write to an non-writable address '0x%x'" % addr)
 
-        # if we are trying to write to an immutable cell, currect execution path must be discarded
-        if self.__sim_mode == SIM_MODE_DISPATCH:
-            if addr in self.__imm:
 
-                oldval = state.se.eval(state.memory.load(addr, size))
-                newval = state.se.eval(state.inspect.mem_write_expr)
-
-                # if the new value is the same with the old one, we're good :)
-                if oldval != newval:  # if value really changes
-                    self.__disable_hooks = False
-
-                    raise Exception("Attempted to write to immutable address '0x%x'" % addr)
 
         if state.inspect.mem_write_expr in self.__ext:
             self.__ext[state.inspect.mem_write_expr] = addr
@@ -522,8 +474,6 @@ class simulate:
                     # if the contents of that cell get lost, we cannot use AWP to write to it
                     # anymore
                     #
-                    # TODO: Not sure if this correct
-                    # UPDATE: Immutables should be fine when we write them with the exact same valut
 
         # All external inputs (sockets, file descriptors, etc.) should be first written somewhere
         # in memory / registers eventually, so we can concretize them afterwards
@@ -577,26 +527,6 @@ class simulate:
             dbg_prnt(DBG_LVL_3, '\t0x%08x: %s = %s' %
                      (insn_addr, regnam, state.inspect.reg_write_expr), pre='[r] ')
 
-            # if simulation is in dispatch mode, check whether the modified register is immutable
-            if self.__sim_mode == SIM_MODE_DISPATCH:
-
-                if regnam in self.__imm_regs:
-
-                    # if the new value is the same with the old one, we're good :)
-
-                    # we can concretize them as SPL registers always have integer values
-                    oldval = state.se.eval(self.__getreg(regnam))
-                    newval = state.se.eval(state.inspect.reg_write_expr)
-
-                    # if value really changes (and it has changed in the past)
-                    if oldval != newval and \
-                            self.__getreg(regnam).shallow_repr() != self.__inireg[regnam].shallow_repr():
-                        self.__disable_hooks = False
-
-                        raise Exception("Attempted to write to immutable register '%s'" % regnam)
-
-                    else:
-                        print "immutable register '%s' overwritten with same value 0x%x" % (regnam, newval)
 
             # check whether symbolic variable persists after write
             if not self.__symv_in(state.inspect.reg_write_expr, self.__inireg[regnam]):
@@ -638,41 +568,6 @@ class simulate:
         # This function is called to solve a difficult problem: Crashes.
 
         dbg_prnt(DBG_LVL_3, "\tCall to '%s' found." % name, pre='[C] ')
-
-        # ---------------------------------------------------------------------
-        # FILE *fopen(const char *path, const char *mode)
-        # ---------------------------------------------------------------------
-        if name == 'fopen':
-
-            # if rdi is an expression then we may need to
-
-            # we work similarly with __mem_RSVPs, but our task here is simpler
-            con_addr = state.se.eval(state.regs.rdi)
-            # print 'ADDR', hex(con_addr)
-
-            if 'W' not in self.__get_permissions(con_addr, state):
-                self.__alloc_un(state, state.regs.rdi)
-                # raise Exception("Attempted to write to an non-writable address '0x%x'" % addr)
-
-            con_addr = state.se.eval(state.regs.rdi)
-
-            name = SYMBOLIC_FILENAME
-
-            # if this address has already been written in the past, any writes will
-            # be overwritten, so discard current path
-            if con_addr in self.__mem or con_addr in self.__imm or (con_addr + 7) in self.__imm:
-                raise Exception("Address 0x%x has already been written or it's immutable. "
-                                "Discard current path." % con_addr)
-
-            # write value byte-by-byte.
-            for i in range(len(name)):
-                self.__mwrite(state, con_addr + i, 1, name[i])
-                self.__imm.add(con_addr + i)
-
-            self.__inivar_rel[con_addr] = name
-            self.__mem[con_addr] = 0
-            dbg_prnt(DBG_LVL_2, "Writing call *0x%x = '%s'" % (con_addr, name))
-
 
         self.__disable_hooks = False  # release "lock" (i.e., enable hooks again)
 
@@ -807,7 +702,6 @@ class simulate:
         # 0xca00013b is actually pool_base + 0x13b
         self.__relative = {}
 
-        self.condreg = ''
         # regsets that are not checked after block execution
         self.unchecked_regsets = []
 
@@ -819,7 +713,6 @@ class simulate:
         #
         # all register that used by SPL are immutable (only functional blocks can modify them)
         #
-        self.__imm_regs = set()  # initially empty; add registers on the fly
 
         self.__sim_mode = SIM_MODE_INVALID
 
@@ -881,21 +774,18 @@ class simulate:
         self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook)
         self.__state.inspect.b('mem_read', when=angr.BP_BEFORE, action=self.__dbg_read_hook)
         self.__state.inspect.b('reg_write', when=angr.BP_BEFORE, action=self.__dbg_reg_wr_hook)
-        self.__state.inspect.b('symbolic_variable',
-                               when=angr.BP_AFTER, action=self.__dbg_symv_hook)
+        self.__state.inspect.b('symbolic_variable', when=angr.BP_AFTER, action=self.__dbg_symv_hook)
         self.__state.inspect.b('call', when=angr.BP_AFTER, action=self.__dbg_call_hook)
 
         self.__origst = self.__state.copy()  # create a copy of the original state
 
         # deep copy
-        self.imm = self.__imm
         self.sym = self.__sym
         self.inireg = self.__inireg
         self.reg = self.__reg
         self.mem = self.__mem
         self.ext = self.__ext
         self.relative = self.__relative
-        self.imm_regs = self.__imm_regs
         self.alloc_size = self.__alloc_size
         self.state = self.__state
         self.disable_hooks = self.__disable_hooks = False  # enable breakpoints
@@ -964,7 +854,7 @@ class simulate:
     # :Ret: If function can extend the path, it returns the basic block path. Otherwise, it returns
     #   None.
     #
-    def simulate_edge(self, currb, nextb, uid, loopback=False):
+    def simulate_edge(self, currb, nextb, uid):
         dbg_prnt(DBG_LVL_2, "Simulating edge (0x%x, 0x%x) for UID = %d" % (currb, nextb, uid))
 
 
@@ -973,75 +863,31 @@ class simulate:
             raise Exception('Illegal transition from current state '
                             '(starts from 0x%x, but state is at 0x%x)' % (currb, self.__state.addr))
 
-        if loopback and currb != nextb:  # base check
-            raise Exception('Loopback mode on distinct blocks')
-
 
         self.__disable_hooks = True
 
 
-        # ---------------------------------------------------------------------
-        # Loopback mode
-        # ---------------------------------------------------------------------
-        if loopback:
-            dbg_prnt(DBG_LVL_2, "Simluation a loop, starting from 0x%x ..." % self.__state.addr)
+        # guide the symbolic execution: generate P shortest paths
+        for slen, subpath in self.__cfg_sp.k_shortest_paths(currb, nextb, uid, PARAMETER_P):
 
-            # guide the symbolic execution: generate P shortest loops
-            for length, loop in self.__cfg_sp.k_shortest_loops(currb, uid, PARAMETER_P):
+            if slen > MAX_ALLOWED_SUBPATH_LEN:  # if subpath is too long, discard it
+                break
 
-                if length > MAX_ALLOWED_SUBPATH_LEN:  # if loop is too long, discard it
-                    # This won't happen as the same check happens inside path.py, but we
-                    # should keep modules independent
+            mode = [SIM_MODE_FUNCTIONAL] + [SIM_MODE_DISPATCH] * (len(subpath) - 1)
 
-                    dbg_prnt(DBG_LVL_3, "Loop is too big (%d). Discard current path ..." % length)
-                    break
+            # do the actual symbolic execution and verify if subpath is correct
+            nextst = self.__simulate_subpath(slen, subpath, mode)
 
-                mode = [SIM_MODE_FUNCTIONAL] + [SIM_MODE_DISPATCH] * (len(loop) - 2) + [SIM_MODE_FUNCTIONAL]
+            if nextst != None:  # success!
+                dbg_prnt(DBG_LVL_2, "Edge successfully simulated.")
 
-                # if we need to simulate loop multiple times, we unroll current loop by a constant
-                # factor
-                if SIMULATED_LOOP_ITERATIONS > 2:
-                    loop = loop[:-1] * (SIMULATED_LOOP_ITERATIONS - 1)
-                    mode = mode[:-1] * (SIMULATED_LOOP_ITERATIONS - 1)
+                if slen > 0:
+                    self.__check_regsets(nextst)
 
+                del self.__state  # we don't need current state
+                self.__state = nextst  # update state
 
-                # do the actual symbolic execution and verify that loop is correct
-                nextst = self.__simulate_subpath(length, loop, mode)
-
-                if nextst != None:  # success!
-                    emph("Edge successfully simulated.", DBG_LVL_2)
-
-                    del self.__state  # we don't need current state
-                    self.__state = nextst  # update state
-
-                    return loop  # return subpath
-
-
-        # ---------------------------------------------------------------------
-        # Path mode
-        # ---------------------------------------------------------------------
-        else:
-            # guide the symbolic execution: generate P shortest paths
-            for slen, subpath in self.__cfg_sp.k_shortest_paths(currb, nextb, uid, PARAMETER_P):
-
-                if slen > MAX_ALLOWED_SUBPATH_LEN:  # if subpath is too long, discard it
-                    break
-
-                mode = [SIM_MODE_FUNCTIONAL] + [SIM_MODE_DISPATCH] * (len(subpath) - 1)
-
-                # do the actual symbolic execution and verify if subpath is correct
-                nextst = self.__simulate_subpath(slen, subpath, mode)
-
-                if nextst != None:  # success!
-                    dbg_prnt(DBG_LVL_2, "Edge successfully simulated.")
-
-                    if slen > 0:
-                        self.__check_regsets(nextst)
-
-                    del self.__state  # we don't need current state
-                    self.__state = nextst  # update state
-
-                    return subpath  # return subpath
+                return subpath  # return subpath
 
 
         # we cannot simulate this edge. Try another induced subgraph
@@ -1055,7 +901,6 @@ class simulate:
     # step(): This function moves the execution forward by 1 basic block.
     #
     # :Arg stmty: The type of the last statement
-    # :Ret: None.
     #
     def step(self, stmt):
         dbg_prnt(DBG_LVL_2, "Moving one step forward from 0x%x ..." % self.__state.addr)
@@ -1129,183 +974,32 @@ class simulate:
         return -1
 
 
-
-    # ---------------------------------------------------------------------------------------------
-    # clone(): This function clones the current simulation object, once it reaches a conditional
-    #       basic block. TODO: elaborate
-    #
-    # :Arg condreg: The register that is used in the condition (must be symbolic)
-    # :Ret: An identical hardcopy of the current object.
-    #
-    def clone(self, condreg):
-
-        dbg_prnt(DBG_LVL_1, "Cloning current state at 0x%x ..." % self.__state.addr)
-
-        print 'RBX', self.__state.regs.rbx, self.__inireg['rbx'], self.__getreg('rbx')
-
-        # TODO: That's a bad way to do it. Nevermind it works.
-        if condreg == 'rax':
-            self.__state.regs.rax = self.__state.se.BVS("cond_rax", 64)
-        elif condreg == 'rbx':
-            self.__state.regs.rbx = self.__state.se.BVS("cond_rbx", 64)
-        elif condreg == 'rcx':
-            self.__state.regs.rcx = self.__state.se.BVS("cond_rcx", 64)
-        elif condreg == 'rdx':
-            self.__state.regs.rdx = self.__state.se.BVS("cond_rdx", 64)
-        elif condreg == 'rsi':
-            self.__state.regs.rsi = self.__state.se.BVS("cond_rsi", 64)
-        elif condreg == 'rdi':
-            self.__state.regs.rdi = self.__state.se.BVS("cond_rdi", 64)
-        elif condreg == 'rbp':
-            self.__state.regs.rbp = self.__state.se.BVS("cond_rbp", 64)
-        elif condreg == 'r8':
-            self.__state.regs.r8 = self.__state.se.BVS("cond_r08", 64)
-        elif condreg == 'r9':
-            self.__state.regs.r9 = self.__state.se.BVS("cond_r09", 64)
-        elif condreg == 'r10':
-            self.__state.regs.r10 = self.__state.se.BVS("cond_r10", 64)
-        elif condreg == 'r11':
-            self.__state.regs.r11 = self.__state.se.BVS("cond_r11", 64)
-        elif condreg == 'r12':
-            self.__state.regs.r12 = self.__state.se.BVS("cond_r12", 64)
-        elif condreg == 'r13':
-            self.__state.regs.r13 = self.__state.se.BVS("cond_r13", 64)
-        elif condreg == 'r14':
-            self.__state.regs.r14 = self.__state.se.BVS("cond_r14", 64)
-        elif condreg == 'r15':
-            self.__state.regs.r15 = self.__state.se.BVS("cond_r15", 64)
-
-        self.condreg = condreg
-
-        state_copy = self.__state.copy()
-
-        # create hte simulation manager object
-        simgr = self.__proj.factory.simulation_manager(thing=state_copy)
-
-        print 'Stashes', simgr.stashes
-        print 'Constraints', self.__state.se.constraints
-
-        # this should throw no exception (it was already successful in absblk.py)
-        simgr.step()
-
-        print 'Stashes', simgr.stashes
-
-        # we should have exactly 2 active stashes
-        print simgr.active[0].se.constraints
-        print simgr.active[1].se.constraints
-
-        if len(simgr.active) != 2:
-            print simgr.active
-            raise Exception('Conditional jump state should have 2 active stashes')
-
-        dbg_prnt(DBG_LVL_2, "Done.")
-
-
-        newsim = simulate(self.project, self.__cfg_sp, self.__state.addr)
-
-        newsim.imm = copy.deepcopy(self.__imm)
-        newsim.sym = copy.deepcopy(self.__sym)
-        newsim.inireg = copy.deepcopy(self.__inireg)
-        newsim.reg = copy.deepcopy(self.__reg)
-        newsim.mem = copy.deepcopy(self.__mem)
-        newsim.ext = copy.deepcopy(self.__ext)
-        newsim.relative = copy.deepcopy(self.__relative)
-        newsim.imm_regs = copy.deepcopy(self.__imm_regs)
-        newsim.alloc_size = copy.deepcopy(self.__alloc_size)
-        newsim.state = self.__state.copy()  # copy.deepcopy(self.__state)
-        newsim.inireg = copy.deepcopy(self.__inireg)
-        newsim.disable_hooks = copy.deepcopy(self.__disable_hooks)
-        newsim.unchecked_regsets = copy.deepcopy(self.unchecked_regsets)
-
-        newsim.copy_locally()
-
-        print 'Constraints', self.__state.se.constraints
-
-        self.__state.add_constraints(simgr.active[1].se.constraints[-1])
-        newsim.state.add_constraints(simgr.active[0].se.constraints[-1])
-
-        del state_copy
-
-        return newsim
-
-
     # ---------------------------------------------------------------------------------------------
     # stash_context(): Save current context to a stash.
     #
-    # :Ret: None.
-    #
-    def copy_locally(self):
-        self.__imm = self.imm
-        self.__sym = self.sym
-        self.__inireg = self.inireg
-        self.__reg = self.reg
-        self.__mem = self.mem
-        self.__ext = self.ext
-        self.__relative = self.relative
-        self.__imm_regs = self.imm_regs
-        self.__alloc_size = self.alloc_size
-        self.__state = self.state
-        self.__disable_hooks = self.disable_hooks
-
-        # state will have action to the parent object. We have to readjust them?
-        self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook)
-        self.__state.inspect.b('mem_read', when=angr.BP_BEFORE, action=self.__dbg_read_hook)
-        self.__state.inspect.b('reg_write', when=angr.BP_BEFORE, action=self.__dbg_reg_wr_hook)
-        self.__state.inspect.b('symbolic_variable',
-                               when=angr.BP_AFTER, action=self.__dbg_symv_hook)
-        self.__state.inspect.b('call', when=angr.BP_AFTER, action=self.__dbg_call_hook)
-
-    # ---------------------------------------------------------------------------------------------
-    # stash_context(): Save current context to a stash.
-    #
-    # :Ret: None.
-    #
-    def update_globals(self):
-        self.imm = self.__imm
-        self.sym = self.__sym
-        self.inireg = self.__inireg
-        self.reg = self.__reg
-        self.mem = self.__mem
-        self.ext = self.__ext
-        self.relative = self.__relative
-        self.imm_regs = self.__imm_regs
-        self.alloc_size = self.__alloc_size
-        self.state = self.__state
-        self.disable_hooks = self.__disable_hooks
-
-    # ---------------------------------------------------------------------------------------------
-    # stash_context(): Save current context to a stash.
-    #
-    # :Ret: None.
-    #      self.__state.inspect.b('mem_write', when=angr.BP_BEFORE, action=self.__dbg_write_hook )
     def stash_context(self):
-        self.__stash_imm = copy.deepcopy(self.__imm)
         self.__stash_sym = copy.deepcopy(self.__sym)
         self.__stash_inireg = copy.deepcopy(self.__inireg)
         self.__stash_reg = copy.deepcopy(self.__reg)
         self.__stash_mem = copy.deepcopy(self.__mem)
         self.__stash_ext = copy.deepcopy(self.__ext)
         self.__stash_relative = copy.deepcopy(self.__relative)
-        self.__stash_imm_regs = copy.deepcopy(self.__imm_regs)
         self.__stash_alloc_size = copy.deepcopy(self.__alloc_size)
         self.__stash_state = self.__state.copy()  # copy.deepcopy(self.__state)
         self.__stash_disable_hooks = copy.deepcopy(self.__disable_hooks)
         self.__stash_unchecked_regsets = copy.deepcopy(self.unchecked_regsets)
 
+
     # ---------------------------------------------------------------------------------------------
     # drop_context_stash(): Drop context stash.
     #
-    # :Ret: None.
-    #
     def drop_context_stash(self):
-        del self.__stash_imm
         del self.__stash_sym
         del self.__stash_inireg
         del self.__stash_reg
         del self.__stash_mem
         del self.__stash_ext
         del self.__stash_relative
-        del self.__stash_imm_regs
         del self.__stash_alloc_size
         del self.__stash_state
         del self.__stash_disable_hooks
@@ -1315,30 +1009,24 @@ class simulate:
 
     # unstash_context(): Remove a context from stash and use it.
     #
-    # :Ret: None.
-    #
     def unstash_context(self):
-        del self.__imm
         del self.__sym
         del self.__inireg
         del self.__reg
         del self.__mem
         del self.__ext
         del self.__relative
-        del self.__imm_regs
         del self.__alloc_size
         del self.__state
         del self.__disable_hooks
         del self.unchecked_regsets
 
-        self.__imm = self.__stash_imm
         self.__sym = self.__stash_sym
         self.__inireg = self.__stash_inireg
         self.__reg = self.__stash_reg
         self.__mem = self.__stash_mem
         self.__ext = self.__stash_ext
         self.__relative = self.__stash_relative
-        self.__imm_regs = self.__stash_imm_regs
         self.__alloc_size = self.__stash_alloc_size
         self.__state = self.__stash_state
         self.__disable_hooks = self.__stash_disable_hooks

@@ -255,13 +255,11 @@ class search:
 
         print 'TREE', tree
 
-
         # ---------------------------------------------------------------------
         # If tree is empty we have reached a solution
         # ---------------------------------------------------------------------
         if not tree:
             dbg_arb(DBG_LVL_2, 'Path simulated successfully: ', path)
-            
 
             # Ok we have executed all statements (for one branch of the Hk) successfully.
             # Execution has stopped at the beginning of the accepted block. For goto and
@@ -285,7 +283,6 @@ class search:
 
             emph('Solution found!', DBG_LVL_1)
 
-            # print 'TOTAL_PATH', totpath, self.__total_path
             return 0
 
 
@@ -299,16 +296,6 @@ class search:
             print uid, self.__IR[uid], tree[0], self.__adj
             print 'PATH', path, [p[2] for p in path] #, self.__adj[ uid ][0]
 
-            # if currb == nextb: step() && simu_edge(step().addr, nextb) (to go back)
-            loopback = False
-
-            #if currb == nextb and uid in self.__adj:# and self.__adj[ uid ][0] in [p[2] for p in path]:              
-
-            # tree[0] is a tuple so we are sure that  self.__adj[uid] has 1 element
-            if currb == nextb and uid in self.__adj and uid >= self.__adj[uid][0]:
-                error('Do a step first')
-                loopback = True
-
 
             if nextb == -1:
                 nextb = currb                   # make target to be itself
@@ -316,7 +303,8 @@ class search:
             if currb == -1:
                 subpath = []
             else:
-                subpath = simulation.simulate_edge(currb, nextb, uid, loopback)
+
+                subpath = simulation.simulate_edge(currb, nextb, uid)
                 if subpath == None:
                     return -1
 
@@ -327,52 +315,6 @@ class search:
             if self.__enum_tree(tree[1:], simulation, path+[(currb, nextb, uid)], uid, totpath) < 0:
                 return -1
 
-
-        # ---------------------------------------------------------------------
-        # Tree is not empty and next node is a branch (2 paths)
-        # ---------------------------------------------------------------------
-        elif isinstance(tree[0], list):
-            if len(tree[0]) != 2:
-                raise Exception('Conditionals with >2 jump targets are not supported.')
-
-
-            uid0, _, _ = tree[0][0][0]
-            uid1, _, _ = tree[0][1][0]
-
-
-            if uid0 != uid1 and self.__IR[uid0]['type'] != 'cond':
-                raise Exception('Invalid!!! WTF should not happen!')
-
-            
-            condreg = [real for virt, real in self.__regmap \
-                            if virt == '__r%d' % self.__IR[uid0]['reg']][0]
-
-            try:
-                # create the simulation object
-                simulation_2 = simulation.clone(condreg)
-            except Exception:
-                dbg_prnt(DBG_LVL_2, "Cannot create simulation object 2. Discard current Hk")
-                return -1
-            
-            self.__sim_objs.append(simulation_2)
-
-            warn('------------------------------- FIRST---------------------------')
-
-            # propagate previous uid as we only process lists here
-            X = self.__enum_tree(tree[0][0], simulation,  path, prev_uid, totpath)
-
-            warn('------------------------------- SECOND ---------------------------')
-            print simulation_2.constraints()
-
-            if X < 0 or \
-               self.__enum_tree(tree[0][1], simulation_2, path, prev_uid, totpath) < 0:
-                    return -1
-
-            warn('------------------------------- DONE ---------------------------')
-
-        # ---------------------------------------------------------------------
-        #
-        # ---------------------------------------------------------------------
         else:
             raise Exception('Malformed tree!')
 
@@ -514,7 +456,6 @@ class search:
                 self.__options['simulate'] = True
 
 
-
                 # TODO: In case of conditional jump, we'll have multiple "final" states.
                 # We should check whether those states have conflicting constraints.
                 #
@@ -522,12 +463,11 @@ class search:
 
                 self.__simstash = []
 
-                entry = self.__entry            # use the regular entry point
 
-                __cfg_sp = P._cfg_shortest_path(self.__cfg, cloblks, adj)
+                entry = self.__entry            # use the regular entry point
+                self.__cfg_sp = P._cfg_shortest_path(self.__cfg, cloblks, adj)
                 try:
-                    # create the simulation object
-                    simulation = S.simulate(self.__proj, __cfg_sp, entry)
+                    simulation = S.simulate(self.__proj, self.__cfg_sp, entry)
                 except Exception, e:
                     dbg_prnt(DBG_LVL_2, "Cannot create simulation object. Discard current Hk")
                     continue
@@ -536,8 +476,6 @@ class search:
                 self.__sim_objs = [simulation]
                 self.__terminals = [tree[0][1]]
 
-                self.__total_path = set()
-                self.__path = set()
                 self.__enum_tree( tree, simulation )
 
 
@@ -546,8 +484,6 @@ class search:
         return 0                                    # try another mapping...      
 
 
-
-    # ---------------------------------------------------------------------------------------------
 
     ''' ======================================================================================= '''
     '''                                     CLASS INTERFACE                                     '''
